@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PC Monitor">
+<title>PC Monitor</title>
+<style>
+  :root {
+    --surface-0: #111110;
+    --surface-1: #1a1a19;
+    --track: #2c2c2a;
+    --grid: #2a2a28;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8a897f;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+  }
+  :root[data-theme="light"] {
+    --surface-0: #f0efec;
+    --surface-1: #fcfcfb;
+    --track: #e4e3df;
+    --grid: #e8e7e3;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #6b6a66;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+  }
+  #theme { font: inherit; font-size: 14px; color: var(--text-primary); background: var(--surface-1);
+    border: 1px solid var(--track); border-radius: 8px; padding: 4px 12px; margin-left: 18px; cursor: pointer; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--surface-0); color: var(--text-primary);
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; padding: 12px; }
+  header { display: flex; align-items: center; justify-content: space-between;
+    color: var(--text-secondary); font-size: 15px; padding: 0 4px 10px; }
+  header .group span { margin-right: 18px; }
+  header .group span:last-child { margin-right: 0; }
+  #clock { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--critical); }
+  .dot.on { background: var(--good); }
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; grid-gap: 12px; min-height: 0; }
+  .tile { background: var(--surface-1); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .label { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .value { font-size: 44px; font-weight: 600; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .value small { font-size: 20px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+  .sub { font-size: 14px; color: var(--text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .sub b { color: var(--text-primary); font-weight: 600; }
+  canvas { display: block; width: 100%; flex: 1; min-height: 40px; margin-top: 8px; }
+  .meter { height: 8px; border-radius: 4px; background: var(--track); margin-top: 8px; overflow: hidden; }
+  .meter div { height: 100%; width: 0; border-radius: 4px; background: var(--series-1); transition: width .4s; }
+  .cores { display: flex; align-items: flex-end; height: 34px; margin-top: 8px; }
+  .cores div { flex: 1; margin-right: 2px; background: var(--track); border-radius: 2px; height: 100%; position: relative; }
+  .cores div:last-child { margin-right: 0; }
+  .cores i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--series-1); border-radius: 2px; }
+  .status { font-size: 13px; color: var(--text-secondary); }
+  .status:before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: var(--sc, var(--good)); }
+  .row { display: flex; justify-content: space-between; }
+  .legend span { margin-left: 12px; }
+  .legend span:before { content: ""; display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; background: var(--c); }
+</style>
+</head>
+<body>
+<header>
+  <div class="group"><span><i class="dot" id="conn"></i><b id="host">—</b></span><span id="uptime"></span></div>
+  <div class="group"><span id="bat"></span><span id="clock"></span><button id="theme" type="button"></button></div>
+</header>
+<main>
+  <section class="tile">
+    <div class="label"><span>CPU</span><span id="freq"></span></div>
+    <div class="value" id="cpu">–<small>%</small></div>
+    <div class="cores" id="cores"></div>
+    <canvas id="c-cpu"></canvas>
+    <div class="sub">Load <b id="load">–</b></div>
+  </section>
+  <section class="tile">
+    <div class="label"><span>CPU temperature</span><span class="status" id="temp-status"></span></div>
+    <div class="value" id="temp">–<small>°C</small></div>
+    <canvas id="c-temp"></canvas>
+    <div class="sub row"><span>Fan <b id="fan">–</b></span><span>NVMe <b id="nvme">–</b></span></div>
+  </section>
+  <section class="tile">
+    <div class="label"><span>Memory</span><span id="swap"></span></div>
+    <div class="value" id="ram">–<small>%</small></div>
+    <div class="sub" id="ram-detail"></div>
+    <div class="meter"><div id="ram-meter"></div></div>
+    <canvas id="c-ram"></canvas>
+  </section>
+  <section class="tile">
+    <div class="label"><span>Network</span><span class="legend"><span style="--c:var(--series-1)">Down</span><span style="--c:var(--series-2)">Up</span></span></div>
+    <div class="row">
+      <div class="value" id="down">–</div>
+      <div class="value" id="up" style="color:var(--text-secondary)">–</div>
+    </div>
+    <canvas id="c-net"></canvas>
+  </section>
+  <section class="tile">
+    <div class="label"><span>GPU</span><span id="gpu-name"></span></div>
+    <div class="value" id="gpu">–<small>%</small></div>
+    <div class="sub row"><span>Temp <b id="gpu-temp">–</b></span><span>VRAM <b id="vram">–</b></span></div>
+    <div class="meter"><div id="vram-meter"></div></div>
+    <canvas id="c-gpu"></canvas>
+  </section>
+  <section class="tile">
+    <div class="label"><span>Disk</span><span id="disk-used"></span></div>
+    <div class="row">
+      <div><div class="sub legend"><span style="--c:var(--series-1);margin-left:0">Read</span></div><div class="value" id="dread" style="font-size:32px">–</div></div>
+      <div style="text-align:right"><div class="sub legend"><span style="--c:var(--series-2)">Write</span></div><div class="value" id="dwrite" style="font-size:32px">–</div></div>
+    </div>
+    <div class="meter"><div id="disk-meter"></div></div>
+    <canvas id="c-disk"></canvas>
+  </section>
+</main>
+<script>
+(function () {
+  var N = 120; // 2 minutes of history at 1 Hz
+  var css = getComputedStyle(document.documentElement);
+  function v(name) { return css.getPropertyValue(name).trim(); }
+  var C1, C2, GRID;
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('theme', t); } catch (e) {}
+    C1 = v('--series-1'); C2 = v('--series-2'); GRID = v('--grid');
+    document.getElementById('theme').textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
+  }
+  var saved = null;
+  try { saved = localStorage.getItem('theme'); } catch (e) {}
+  setTheme(saved === 'light' ? 'light' : 'dark');
+  document.getElementById('theme').onclick = function () {
+    setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  };
+  var hist = { cpu: [], temp: [], ram: [], down: [], up: [], gpu: [], dread: [], dwrite: [] };
+  function $(id) { return document.getElementById(id); }
+  function push(key, val) { var a = hist[key]; a.push(val); if (a.length > N) a.shift(); }
+
+  function rate(b) {
+    var u = ['B', 'KB', 'MB', 'GB'], i = 0;
+    while (b >= 1000 && i < u.length - 1) { b /= 1000; i++; }
+    return (b < 10 && i > 0 ? b.toFixed(1) : Math.round(b)) + '<small>' + u[i] + '/s</small>';
+  }
+  function gb(b) { return (b / 1073741824).toFixed(1); }
+  function dur(s) {
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    return 'up ' + (d ? d + 'd ' : '') + h + 'h ' + m + 'm';
+  }
+  function meterColor(p) { return p >= 90 ? v('--critical') : p >= 75 ? v('--warning') : C1; }
+
+  // Line chart: series = [{data, color}], max = fixed y-max or null for auto
+  function draw(id, series, max) {
+    var cv = $(id), dpr = window.devicePixelRatio || 1;
+    var w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (max == null) {
+      max = 1024;
+      for (var s = 0; s < series.length; s++)
+        for (var k = 0; k < series[s].data.length; k++) max = Math.max(max, series[s].data[k]);
+      max *= 1.15;
+    }
+    ctx.strokeStyle = GRID; ctx.lineWidth = 1;
+    for (var g = 0; g <= 2; g++) {
+      var gy = Math.round(1 + (h - 2) * g / 2) + 0.5;
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+    }
+    for (s = 0; s < series.length; s++) {
+      var d = series[s].data; if (d.length < 2) continue;
+      var x0 = w - (d.length - 1) * w / (N - 1);
+      ctx.beginPath();
+      for (var i = 0; i < d.length; i++) {
+        var x = x0 + i * w / (N - 1), y = h - 1 - Math.min(d[i] / max, 1) * (h - 2);
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.strokeStyle = series[s].color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+      if (series.length === 1) { // soft area fill for single series
+        ctx.lineTo(w, h); ctx.lineTo(x0, h); ctx.closePath();
+        ctx.globalAlpha = 0.15; ctx.fillStyle = series[s].color; ctx.fill(); ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  var coreEls = [];
+  function render(s) {
+    $('host').textContent = s.host;
+    $('uptime').textContent = dur(s.uptime);
+    if (s.bat) $('bat').textContent = 'Battery ' + Math.round(s.bat.pct) + '%' + (s.bat.plugged ? ' · plugged in' : '');
+
+    // CPU
+    $('cpu').innerHTML = Math.round(s.cpu) + '<small>%</small>';
+    $('freq').textContent = (s.freq / 1000).toFixed(2) + ' GHz';
+    $('load').textContent = s.load.map(function (x) { return x.toFixed(2); }).join('  ');
+    if (coreEls.length !== s.cores.length) {
+      var box = $('cores'); box.innerHTML = ''; coreEls = [];
+      for (var i = 0; i < s.cores.length; i++) {
+        var d = document.createElement('div'), b = document.createElement('i');
+        d.appendChild(b); box.appendChild(d); coreEls.push(b);
+      }
+    }
+    for (i = 0; i < s.cores.length; i++) coreEls[i].style.height = s.cores[i] + '%';
+    push('cpu', s.cpu);
+    draw('c-cpu', [{ data: hist.cpu, color: C1 }], 100);
+
+    // Temperature + fan
+    if (s.cpu_temp != null) {
+      var t = s.cpu_temp, st = $('temp-status');
+      $('temp').innerHTML = Math.round(t) + '<small>°C</small>';
+      st.textContent = t >= 85 ? 'Hot' : t >= 70 ? 'Warm' : 'Normal';
+      st.style.setProperty('--sc', v(t >= 85 ? '--critical' : t >= 70 ? '--warning' : '--good'));
+      push('temp', t);
+      draw('c-temp', [{ data: hist.temp, color: C1 }], 100);
+    }
+    $('fan').textContent = s.fans.length ? s.fans.map(function (f) { return f.rpm + ' rpm'; }).join(' / ') : 'n/a';
+    $('nvme').textContent = s.nvme_temp != null ? Math.round(s.nvme_temp) + '°C' : 'n/a';
+
+    // Memory
+    var rp = s.ram_used / s.ram_total * 100;
+    $('ram').innerHTML = Math.round(rp) + '<small>%</small>';
+    $('ram-detail').innerHTML = '<b>' + gb(s.ram_used) + '</b> / ' + gb(s.ram_total) + ' GB';
+    $('swap').textContent = 'Swap ' + Math.round(s.swap) + '%';
+    $('ram-meter').style.width = rp + '%'; $('ram-meter').style.background = meterColor(rp);
+    push('ram', rp);
+    draw('c-ram', [{ data: hist.ram, color: C1 }], 100);
+
+    // Network
+    $('down').innerHTML = '↓ ' + rate(s.net_down);
+    $('up').innerHTML = '↑ ' + rate(s.net_up);
+    push('down', s.net_down); push('up', s.net_up);
+    draw('c-net', [{ data: hist.down, color: C1 }, { data: hist.up, color: C2 }], null);
+
+    // GPU
+    if (s.gpu) {
+      var vp = s.gpu.mem_used / s.gpu.mem_total * 100;
+      $('gpu-name').textContent = s.gpu.name.replace('NVIDIA GeForce ', '');
+      $('gpu').innerHTML = Math.round(s.gpu.util) + '<small>%</small>';
+      $('gpu-temp').textContent = Math.round(s.gpu.temp) + '°C';
+      $('vram').textContent = (s.gpu.mem_used / 1024).toFixed(1) + ' / ' + (s.gpu.mem_total / 1024).toFixed(1) + ' GB';
+      $('vram-meter').style.width = vp + '%'; $('vram-meter').style.background = meterColor(vp);
+      push('gpu', s.gpu.util);
+    } else {
+      $('gpu-name').textContent = 'not available';
+    }
+    draw('c-gpu', [{ data: hist.gpu, color: C1 }], 100);
+
+    // Disk
+    $('dread').innerHTML = rate(s.disk_read);
+    $('dwrite').innerHTML = rate(s.disk_write);
+    $('disk-used').textContent = '/ ' + Math.round(s.disk_used) + '% used';
+    $('disk-meter').style.width = s.disk_used + '%'; $('disk-meter').style.background = meterColor(s.disk_used);
+    push('dread', s.disk_read); push('dwrite', s.disk_write);
+    draw('c-disk', [{ data: hist.dread, color: C1 }, { data: hist.dwrite, color: C2 }], null);
+  }
+
+  var last = 0;
+  var es = new EventSource('stream');
+  es.onmessage = function (e) { last = Date.now(); render(JSON.parse(e.data)); };
+  setInterval(function () {
+    var n = new Date();
+    $('clock').textContent = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
+    $('conn').className = 'dot' + (Date.now() - last < 3000 ? ' on' : '');
+  }, 1000);
+})();
+</script>
+</body>
+</html>
