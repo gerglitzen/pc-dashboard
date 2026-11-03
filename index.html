@@ -65,6 +65,18 @@
   .row { display: flex; justify-content: space-between; }
   .legend span { margin-left: 12px; }
   .legend span:before { content: ""; display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; background: var(--c); }
+  .tap { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .graph { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .procs { display: none; flex: 1; list-style: none; margin-top: 10px; font-size: 15px; }
+  .procs li { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--grid); }
+  .procs li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
+  .procs small { color: var(--text-muted); }
+  .procs b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .open .graph { display: none; }
+  .open .procs { display: block; }
+  .hint { color: var(--text-muted); }
+  .hint:before { content: "Tap for top 5 \25B8"; }
+  .open .hint:before { content: "\25C2\00A0Tap for chart"; }
 </style>
 </head>
 <body>
@@ -73,33 +85,24 @@
   <div class="group"><span id="bat"></span><span id="clock"></span><button id="theme" type="button"></button></div>
 </header>
 <main>
-  <section class="tile">
+  <section class="tile tap" id="t-cpu">
     <div class="label"><span>CPU</span><span id="freq"></span></div>
     <div class="value" id="cpu">–<small>%</small></div>
-    <div class="cores" id="cores"></div>
-    <canvas id="c-cpu"></canvas>
-    <div class="sub">Load <b id="load">–</b></div>
+    <div class="graph">
+      <div class="cores" id="cores"></div>
+      <canvas id="c-cpu"></canvas>
+    </div>
+    <ol class="procs" id="p-cpu"></ol>
+    <div class="sub row"><span>Load <b id="load">–</b></span><span class="hint"></span></div>
   </section>
-  <section class="tile">
-    <div class="label"><span>CPU temperature</span><span class="status" id="temp-status"></span></div>
-    <div class="value" id="temp">–<small>°C</small></div>
-    <canvas id="c-temp"></canvas>
-    <div class="sub row"><span>Fan <b id="fan">–</b></span><span>NVMe <b id="nvme">–</b></span></div>
-  </section>
-  <section class="tile">
+  <section class="tile tap" id="t-ram">
     <div class="label"><span>Memory</span><span id="swap"></span></div>
     <div class="value" id="ram">–<small>%</small></div>
     <div class="sub" id="ram-detail"></div>
     <div class="meter"><div id="ram-meter"></div></div>
-    <canvas id="c-ram"></canvas>
-  </section>
-  <section class="tile">
-    <div class="label"><span>Network</span><span class="legend"><span style="--c:var(--series-1)">Down</span><span style="--c:var(--series-2)">Up</span></span></div>
-    <div class="row">
-      <div class="value" id="down">–</div>
-      <div class="value" id="up" style="color:var(--text-secondary)">–</div>
-    </div>
-    <canvas id="c-net"></canvas>
+    <div class="graph"><canvas id="c-ram"></canvas></div>
+    <ol class="procs" id="p-ram"></ol>
+    <div class="sub row"><span></span><span class="hint"></span></div>
   </section>
   <section class="tile">
     <div class="label"><span>GPU</span><span id="gpu-name"></span></div>
@@ -109,6 +112,12 @@
     <canvas id="c-gpu"></canvas>
   </section>
   <section class="tile">
+    <div class="label"><span>CPU temperature</span><span class="status" id="temp-status"></span></div>
+    <div class="value" id="temp">–<small>°C</small></div>
+    <canvas id="c-temp"></canvas>
+    <div class="sub row"><span>Fan <b id="fan">–</b></span><span>NVMe <b id="nvme">–</b></span></div>
+  </section>
+  <section class="tile">
     <div class="label"><span>Disk</span><span id="disk-used"></span></div>
     <div class="row">
       <div><div class="sub legend"><span style="--c:var(--series-1);margin-left:0">Read</span></div><div class="value" id="dread" style="font-size:32px">–</div></div>
@@ -116,6 +125,14 @@
     </div>
     <div class="meter"><div id="disk-meter"></div></div>
     <canvas id="c-disk"></canvas>
+  </section>
+  <section class="tile">
+    <div class="label"><span>Network</span><span class="legend"><span style="--c:var(--series-1)">Down</span><span style="--c:var(--series-2)">Up</span></span></div>
+    <div class="row">
+      <div class="value" id="down">–</div>
+      <div class="value" id="up" style="color:var(--text-secondary)">–</div>
+    </div>
+    <canvas id="c-net"></canvas>
   </section>
 </main>
 <script>
@@ -249,6 +266,12 @@
     }
     draw('c-gpu', [{ data: hist.gpu, color: C1 }], 100);
 
+    // Top processes
+    if (s.procs) {
+      procList('p-cpu', s.procs.cpu, function (x) { return x.toFixed(1) + '%'; });
+      procList('p-ram', s.procs.mem, function (b) { return b >= 1073741824 ? gb(b) + ' GB' : Math.round(b / 1048576) + ' MB'; });
+    }
+
     // Disk
     $('dread').innerHTML = rate(s.disk_read);
     $('dwrite').innerHTML = rate(s.disk_write);
@@ -257,6 +280,18 @@
     push('dread', s.disk_read); push('dwrite', s.disk_write);
     draw('c-disk', [{ data: hist.dread, color: C1 }, { data: hist.dwrite, color: C2 }], null);
   }
+
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
+  function procList(id, rows, fmt) {
+    var h = '';
+    for (var i = 0; i < rows.length; i++)
+      h += '<li><span>' + esc(rows[i][0]) + (rows[i][2] > 1 ? ' <small>×' + rows[i][2] + '</small>' : '') +
+           '</span><b>' + fmt(rows[i][1]) + '</b></li>';
+    $(id).innerHTML = h;
+  }
+  ['t-cpu', 't-ram'].forEach(function (id) {
+    $(id).onclick = function () { this.classList.toggle('open'); };
+  });
 
   var last = 0;
   var es = new EventSource('stream');

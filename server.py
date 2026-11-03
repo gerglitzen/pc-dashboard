@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """LAN system dashboard: serves index.html and a 1 Hz Server-Sent Events stream of system stats."""
+import glob
 import json
 import os
 import socket
@@ -27,6 +28,12 @@ def net_bytes():
     return sent, recv
 
 
+def cpu_mhz():
+    # read sysfs directly: psutil 5.9.0 (Ubuntu's python3-psutil) reports GHz instead of MHz
+    paths = glob.glob("/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq")
+    return sum(int(open(p).read()) for p in paths) / len(paths) / 1000
+
+
 def gpu():
     try:
         out = subprocess.run(
@@ -40,7 +47,25 @@ def gpu():
         return None
 
 
-def sample(dt, net, prev_net, disk, prev_disk, g):
+def top_procs():
+    """Top 5 process names by CPU and by RAM; processes with the same name are summed."""
+    ncpu = psutil.cpu_count()
+    groups = {}
+    for p in psutil.process_iter(["name", "cpu_percent", "memory_info"]):
+        i = p.info
+        g = groups.setdefault(i["name"], [0.0, 0, 0])
+        g[0] += (i["cpu_percent"] or 0) / ncpu  # % of whole CPU, like the total
+        g[1] += i["memory_info"].rss if i["memory_info"] else 0
+        g[2] += 1
+
+    def top(k):
+        rows = sorted(groups.items(), key=lambda x: -x[1][k])[:5]
+        return [[name, v[k], v[2]] for name, v in rows]
+
+    return {"cpu": top(0), "mem": top(1)}
+
+
+def sample(dt, net, prev_net, disk, prev_disk, g, procs):
     temps = psutil.sensors_temperatures()
     cpu_temp = next((s.current for s in temps.get("coretemp", []) if s.label.startswith("Package")), None)
     nvme_temp = next((s.current for s in temps.get("nvme", [])), None)
@@ -52,7 +77,7 @@ def sample(dt, net, prev_net, disk, prev_disk, g):
         "uptime": time.time() - psutil.boot_time(),
         "cpu": sum(cores) / len(cores),
         "cores": cores,
-        "freq": psutil.cpu_freq().current,
+        "freq": cpu_mhz(),
         "load": os.getloadavg(),
         "cpu_temp": cpu_temp,
         "nvme_temp": nvme_temp,
@@ -67,6 +92,7 @@ def sample(dt, net, prev_net, disk, prev_disk, g):
         "disk_write": (disk.write_bytes - prev_disk.write_bytes) / dt,
         "disk_used": psutil.disk_usage("/").percent,
         "gpu": g,
+        "procs": procs,
         "bat": {"pct": bat.percent, "plugged": bat.power_plugged} if bat else None,
     }
 
@@ -75,15 +101,17 @@ def sampler():
     global latest
     psutil.cpu_percent(percpu=True)  # prime the counter
     prev_net, prev_disk, prev_t = net_bytes(), psutil.disk_io_counters(), time.time()
-    g, tick = None, 0
+    top_procs()  # prime per-process CPU counters
+    g, procs, tick = None, None, 0
     while True:
         time.sleep(1)
         now = time.time()
         net, disk = net_bytes(), psutil.disk_io_counters()
-        if tick % 2 == 0:  # nvidia-smi is slow-ish; every 2 s is plenty
+        if tick % 2 == 0:  # nvidia-smi and the process scan are slow-ish; every 2 s is plenty
             g = gpu()
+            procs = top_procs()
         tick += 1
-        data = json.dumps(sample(now - prev_t, net, prev_net, disk, prev_disk, g))
+        data = json.dumps(sample(now - prev_t, net, prev_net, disk, prev_disk, g, procs))
         prev_net, prev_disk, prev_t = net, disk, now
         with cond:
             latest = data

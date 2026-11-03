@@ -2,7 +2,7 @@
 
 A live system monitor for this PC that you open in a web browser on another device on the same network (e.g. an old iPad), so that device works as a wireless status screen.
 
-It shows CPU (total, each core, clock, load), CPU temperature, fan speed, SSD temperature, RAM and swap, network download/upload, GPU (NVIDIA), disk read/write and space used, battery, and uptime. Values update every second and the charts cover the last 2 minutes.
+It shows CPU (total, each core, clock, load), CPU temperature, fan speed, SSD temperature, RAM and swap, network download/upload, GPU (NVIDIA), disk read/write and space used, battery, and uptime. Values update every second and the charts cover the last 2 minutes. Tap the CPU or Memory tile to see the top 5 processes (processes with the same name are added together, e.g. all `chrome` processes).
 
 ## Requirements
 
