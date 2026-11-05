@@ -21,6 +21,9 @@
     --good: #0ca30c;
     --warning: #fab219;
     --critical: #d03b3b;
+    --card: #242422;
+    --shadow: 0 1px 2px rgba(0,0,0,.4);
+    --accent-soft: rgba(57,135,229,.14);
   }
   :root[data-theme="light"] {
     --surface-0: #f0efec;
@@ -32,6 +35,9 @@
     --text-muted: #6b6a66;
     --series-1: #2a78d6;
     --series-2: #eb6834;
+    --card: #ffffff;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+    --accent-soft: rgba(42,120,214,.08);
   }
   #theme { font: inherit; font-size: 14px; color: var(--text-primary); background: var(--surface-1);
     border: 1px solid var(--track); border-radius: 8px; padding: 4px 12px; margin-left: 18px; cursor: pointer; }
@@ -46,7 +52,11 @@
   #clock { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--critical); }
   .dot.on { background: var(--good); }
-  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; grid-gap: 12px; min-height: 0; }
+  #pages { flex: 1; overflow: hidden; min-height: 0; margin: 0 -12px; touch-action: pan-y; }
+  #track { display: flex; width: 200%; height: 100%; transition: transform .45s cubic-bezier(.2,.8,.2,1); }
+  #track.drag { transition: none; }
+  .page { width: 50%; height: 100%; flex: none; padding: 0 12px; }
+  main { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; grid-gap: 12px; min-height: 0; }
   .tile { background: var(--surface-1); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   .label { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; display: flex; justify-content: space-between; }
   .value { font-size: 44px; font-weight: 600; line-height: 1.05; font-variant-numeric: tabular-nums; }
@@ -77,14 +87,84 @@
   .hint { color: var(--text-muted); }
   .hint:before { content: "Tap for top 5 \25B8"; }
   .open .hint:before { content: "\25C2\00A0Tap for chart"; }
+  #tabs { position: relative; display: flex; background: var(--track); border-radius: 9px; padding: 2px; }
+  #tabs button { position: relative; z-index: 1; width: 84px; padding: 4px 0; font: inherit; font-size: 14px; color: var(--text-secondary);
+    background: none; border: 0; cursor: pointer; transition: color .3s; -webkit-tap-highlight-color: transparent; }
+  #tabs button.on { color: var(--text-primary); font-weight: 600; }
+  #tabs i { position: absolute; top: 2px; bottom: 2px; left: 2px; width: 84px; border-radius: 7px; background: var(--surface-1);
+    box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .45s cubic-bezier(.2,.8,.2,1); }
+  .dragging #tabs i { transition: none; }
+  .btn { font: inherit; font-size: 14px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--track);
+    border-radius: 8px; padding: 7px 13px; cursor: pointer; transition: transform .15s, background .2s, color .2s;
+    -webkit-tap-highlight-color: transparent; }
+  .btn:active { transform: scale(.95); }
+  .btn.on { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+  #tasks { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-gap: 12px; }
+  #tasks .tile { padding-bottom: 0; }
+  .col-head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
+  .col-head .tot { font-variant-numeric: tabular-nums; }
+  .count { display: inline-block; min-width: 22px; text-align: center; margin-left: 8px; padding: 1px 7px; border-radius: 10px;
+    background: var(--track); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; margin: 0 -8px; padding: 0 8px 14px; }
+  .zone { border-radius: 10px; padding-bottom: 6px; min-height: 52px; transition: background .2s; }
+  .zone.over { background: var(--accent-soft); }
+  .prio { display: block; margin: 10px 0 0; }
+  .add { width: 100%; margin: 6px 0 2px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--text-primary); background: transparent;
+    border: 1px dashed var(--track); border-radius: 10px; outline: none; -webkit-appearance: none; transition: border-color .2s; }
+  .add:focus { border-style: solid; border-color: var(--series-1); }
+  .card { position: relative; margin-top: 8px; padding: 11px 12px; border-radius: 10px; background: var(--card); box-shadow: var(--shadow);
+    font-size: 15px; line-height: 1.3; word-wrap: break-word; cursor: grab; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; transition: transform .15s, box-shadow .2s; }
+  .card:active { transform: scale(.98); }
+  .card.run { box-shadow: 0 0 0 1.5px var(--series-1), var(--shadow); }
+  .card.has-play { padding-right: 52px; }
+  .card .m { font-size: 13px; color: var(--text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .card.run .m { color: var(--series-1); }
+  .play { position: absolute; right: 10px; top: 50%; margin-top: -17px; width: 34px; height: 34px; border-radius: 50%; border: 0;
+    background: var(--track); color: var(--text-primary); cursor: pointer; transition: transform .15s, background .2s; }
+  .play:active { transform: scale(.9); }
+  .card.run .play { background: var(--series-1); color: #fff; }
+  .play svg, #s-timer svg { display: block; margin: auto; }
+  .pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--series-1); margin-right: 6px;
+    vertical-align: 1px; -webkit-animation: pulse 1.6s infinite; animation: pulse 1.6s infinite; }
+  @-webkit-keyframes pulse { 50% { opacity: .25; } }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .ph { margin-top: 8px; border-radius: 10px; border: 2px dashed var(--series-1); background: var(--accent-soft); }
+  .ghost { position: fixed; z-index: 20; margin: 0; pointer-events: none; opacity: .96; transition: none;
+    transform: rotate(2deg) scale(1.04); box-shadow: 0 14px 32px rgba(0,0,0,.35); }
+  #sheet { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 10; display: flex; align-items: flex-start; justify-content: center;
+    padding: 60px 16px 0; background: rgba(0,0,0,.45); opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s; }
+  #sheet.show { opacity: 1; visibility: visible; }
+  #sheet .box { width: 540px; max-width: 100%; padding: 20px; border-radius: 16px; background: var(--surface-1);
+    box-shadow: 0 24px 60px rgba(0,0,0,.4); transform: translateY(24px) scale(.97); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+  #sheet.show .box { transform: none; }
+  #sheet .label { margin: 18px 0 8px; }
+  #s-move .btn { margin: 0 6px 6px 0; }
+  #sheet input { font: inherit; font-size: 16px; color: var(--text-primary); background: var(--surface-0);
+    border: 1px solid var(--track); border-radius: 8px; padding: 7px 8px; -webkit-appearance: none; }
+  #sheet #s-title { width: 100%; margin-left: -9px; font-size: 21px; font-weight: 600; background: transparent; border-color: transparent; outline: none; }
+  #sheet #s-title:focus { border-color: var(--track); }
+  #s-times { list-style: none; font-size: 15px; font-variant-numeric: tabular-nums; }
+  #s-times li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-top: 1px solid var(--grid); }
+  #s-times li .btn { padding: 2px 10px; }
+  .timebar { display: flex; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .timebar > * { margin: 0 8px 8px 0; }
+  #s-timer { display: flex; align-items: center; }
+  #s-timer svg { margin: 0 8px 0 0; }
+  #toast { position: fixed; left: 50%; bottom: 24px; z-index: 30; padding: 11px 18px; border-radius: 10px; font-size: 14px;
+    background: var(--text-primary); color: var(--surface-0); box-shadow: 0 8px 24px rgba(0,0,0,.3);
+    transform: translate(-50%, 100px); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+  #toast.show { transform: translate(-50%, 0); }
 </style>
 </head>
 <body>
 <header>
   <div class="group"><span><i class="dot" id="conn"></i><b id="host">—</b></span><span id="uptime"></span></div>
+  <div class="group" id="tabs"><i></i><button class="on" type="button">System</button><button type="button">Tasks</button></div>
   <div class="group"><span id="bat"></span><span id="clock"></span><button id="theme" type="button"></button></div>
 </header>
-<main>
+<div id="pages"><div id="track">
+<main class="page">
   <section class="tile tap" id="t-cpu">
     <div class="label"><span>CPU</span><span id="freq"></span></div>
     <div class="value" id="cpu">–<small>%</small></div>
@@ -135,6 +215,27 @@
     <canvas id="c-net"></canvas>
   </section>
 </main>
+<section class="page" id="tasks">
+  <div class="tile"><div class="col-head"><span>Backlog<span class="count" id="n-backlog"></span></span></div>
+    <input class="add" id="add" type="text" placeholder="+ Add a task" autocomplete="off">
+    <div class="list" id="l-backlog"></div></div>
+  <div class="tile"><div class="col-head"><span>In progress<span class="count" id="n-progress"></span></span><span class="tot" id="t-progress"></span></div>
+    <div class="list zone" id="l-progress" data-s="progress"></div></div>
+  <div class="tile"><div class="col-head"><span>Done<span class="count" id="n-done"></span></span><span class="tot" id="t-done"></span></div>
+    <div class="list zone" id="l-done" data-s="done"></div></div>
+</section>
+</div></div>
+<div id="sheet"><div class="box">
+  <input id="s-title" type="text">
+  <div class="label">Move to</div>
+  <div id="s-move"></div>
+  <div class="label"><span>Time</span><span id="s-total"></span></div>
+  <ul id="s-times"></ul>
+  <div class="timebar"><button class="btn" id="s-timer" type="button"></button></div>
+  <div class="timebar"><input id="s-from" type="time"><span>–</span><input id="s-to" type="time"><button class="btn" id="s-addtime" type="button">Add time</button></div>
+  <div class="row" style="margin-top:14px"><button class="btn" id="s-del" type="button" style="color:var(--critical)">Delete</button><button class="btn on" id="s-close" type="button">Done</button></div>
+</div></div>
+<div id="toast"></div>
 <script>
 (function () {
   var N = 120; // 2 minutes of history at 1 Hz
@@ -293,13 +394,296 @@
     $(id).onclick = function () { this.classList.toggle('open'); };
   });
 
-  var last = 0;
+  // ---- Pages: swipe (the page follows the finger) or tap the header tabs ----
+  var page = 0, track = $('track'), tabBtns = $('tabs').getElementsByTagName('button'), tabInd = $('tabs').getElementsByTagName('i')[0];
+  function place(dx) { // dx = finger offset in px while swiping, null = settle on the current page
+    var w = $('pages').clientWidth, p = Math.max(0, Math.min(1, page - (dx || 0) / w));
+    track.style.transform = dx == null ? 'translateX(' + (-50 * page) + '%)' : 'translateX(' + (-page * w + dx) + 'px)';
+    tabInd.style.transform = 'translateX(' + p * tabBtns[0].offsetWidth + 'px)';
+  }
+  function show(p) {
+    page = p; track.className = ''; document.body.className = ''; place(null);
+    tabBtns[0].className = p ? '' : 'on'; tabBtns[1].className = p ? 'on' : '';
+    if (p) loadTasks();
+  }
+  tabBtns[0].onclick = function () { show(0); }; tabBtns[1].onclick = function () { show(1); };
+  var sw = null;
+  $('pages').addEventListener('touchstart', function (e) {
+    var p = e.touches[0];
+    sw = drag || e.touches.length > 1 ? null : { x: p.clientX, y: p.clientY, t: Date.now(), dx: 0, dir: null };
+  });
+  $('pages').addEventListener('touchmove', function (e) {
+    if (!sw || drag) return;
+    var dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+    if (!sw.dir) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      sw.dir = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      if (sw.dir === 'h') { cancelPress(); track.className = 'drag'; document.body.className = 'dragging'; }
+    }
+    if (sw.dir !== 'h') return;
+    e.preventDefault();
+    if ((page === 0 && dx > 0) || (page === 1 && dx < 0)) dx /= 3; // rubber band at the edges
+    sw.dx = dx; place(dx);
+  }, { passive: false });
+  $('pages').addEventListener('touchend', function () {
+    var s = sw; sw = null;
+    if (!s || s.dir !== 'h') return;
+    var w = $('pages').clientWidth, v = s.dx / (Date.now() - s.t); // px/ms
+    show(s.dx < -w / 4 || v < -0.3 ? 1 : s.dx > w / 4 || v > 0.3 ? 0 : page);
+  });
+  window.addEventListener('resize', function () { place(null); });
+
+  // ---- Tasks: stored by the server in a markdown file ----
+  // task = {title, status: 'backlog'|'progress'|'done', prio: 'High'|'Medium'|'Low', times: [[start, end]]}
+  // times are 'H:MM'; an empty end means the timer is running
+  var tasks = [], version = null, cur = null, busy = false;
+  var PRIOS = ['High', 'Medium', 'Low'], PRIO_COLOR = { High: '--critical', Medium: '--warning', Low: '--text-muted' };
+  var MOVES = [['backlog', 'High', 'Backlog · High'], ['backlog', 'Medium', 'Medium'], ['backlog', 'Low', 'Low'],
+               ['progress', null, 'In progress'], ['done', null, 'Done']];
+  var ICON_PLAY = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.2v9.6l8-4.8z" fill="currentColor"/></svg>';
+  var ICON_STOP = '<svg width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>';
+  function pad(n) { return ('0' + n).slice(-2); }
+  function nowHM() { var n = new Date(); return n.getHours() + ':' + pad(n.getMinutes()); }
+  function mins(hm) { var p = hm.split(':'); return +p[0] * 60 + +p[1]; }
+  function spent(t) {
+    var m = 0;
+    t.times.forEach(function (r) { var d = mins(r[1] || nowHM()) - mins(r[0]); m += d < 0 ? d + 1440 : d; });
+    return m;
+  }
+  function fmtMin(m) { return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; }
+  function running(t) { return t.times.some(function (r) { return !r[1]; }); }
+  function stopTimer(t) {
+    var n = nowHM();
+    t.times = t.times.filter(function (r) { return r[1] || r[0] !== n; }); // drop 0-minute runs
+    t.times.forEach(function (r) { if (!r[1]) r[1] = n; });
+  }
+  function moveTo(t, status, prio, before) { // before = task to insert above; none = bottom of the column
+    if (status !== 'progress' && running(t)) stopTimer(t);
+    t.status = status; if (prio) t.prio = prio;
+    tasks.splice(tasks.indexOf(t), 1);
+    if (before) tasks.splice(tasks.indexOf(before), 0, t); else tasks.push(t);
+  }
+  function toggleTimer(t) {
+    if (running(t)) stopTimer(t);
+    else {
+      tasks.forEach(function (o) { if (running(o)) stopTimer(o); }); // one timer at a time
+      if (t.status !== 'progress') moveTo(t, 'progress');
+      t.times.push([nowHM(), '']);
+    }
+    save();
+  }
+
+  var toastT;
+  function toast(msg) {
+    $('toast').textContent = msg; $('toast').className = 'show';
+    clearTimeout(toastT); toastT = setTimeout(function () { $('toast').className = ''; }, 3500);
+  }
+  function req(method, body) {
+    var x = new XMLHttpRequest();
+    x.open(method, 'tasks');
+    busy = true;
+    x.onload = function () {
+      busy = false;
+      var r = JSON.parse(x.responseText);
+      version = r.version;
+      if (method === 'GET' || x.status === 409) {
+        if (x.status === 409) { closeSheet(); toast('Task file changed on the PC — reloaded, please redo your last change'); }
+        tasks = r.tasks; renderTasks();
+      }
+    };
+    x.onerror = function () { busy = false; toast('Could not reach the PC — change not saved'); };
+    x.send(body ? JSON.stringify(body) : null);
+  }
+  function loadTasks() { if (!busy && !cur && !drag && document.activeElement !== $('add')) req('GET'); }
+  function save() { req('PUT', { version: version, tasks: tasks }); renderTasks(); if (cur) renderSheet(); }
+
+  function card(t) {
+    var i = tasks.indexOf(t), run = running(t), play = t.status === 'progress';
+    var h = '<div class="card' + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title);
+    if (t.times.length)
+      h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(t)) + ' · ' +
+           t.times.map(function (r) { return r[0] + '–' + (r[1] || 'now'); }).join(', ') + '</div>';
+    if (play) h += '<button class="play" type="button" data-play="' + i + '">' + (run ? ICON_STOP : ICON_PLAY) + '</button>';
+    return h + '</div>';
+  }
+  function renderTasks() {
+    if (drag) return;
+    var h = { backlog: '', progress: '', done: '' }, n = { backlog: 0, progress: 0, done: 0 }, tot = { progress: 0, done: 0 };
+    PRIOS.forEach(function (p) {
+      h.backlog += '<div class="zone" data-s="backlog" data-p="' + p + '"><span class="prio status" style="--sc:var(' + PRIO_COLOR[p] + ')">' + p + '</span>';
+      tasks.forEach(function (t) { if (t.status === 'backlog' && t.prio === p) h.backlog += card(t); });
+      h.backlog += '</div>';
+    });
+    tasks.forEach(function (t) {
+      n[t.status]++;
+      if (t.status !== 'backlog') { h[t.status] += card(t); tot[t.status] += spent(t); }
+    });
+    for (var k in h) { $('l-' + k).innerHTML = h[k]; $('n-' + k).textContent = n[k]; }
+    $('t-progress').textContent = tot.progress ? fmtMin(tot.progress) : '';
+    $('t-done').textContent = tot.done ? fmtMin(tot.done) : '';
+  }
+  $('add').onkeydown = function (e) {
+    if (e.keyCode !== 13 || !this.value.trim()) return;
+    tasks.push({ title: this.value.trim(), status: 'backlog', prio: 'Medium', times: [] });
+    this.value = ''; save();
+  };
+
+  // ---- Drag & drop: long-press a card (touch) or drag it (mouse), drop it on any column / priority ----
+  var tk = $('tasks'), drag = null, press = null, justDragged = false;
+  function cardOf(el) {
+    for (; el && el !== tk; el = el.parentNode) if (el.getAttribute('data-i')) return el;
+    return null;
+  }
+  function cancelPress() { if (press) clearTimeout(press.timer); press = null; }
+  function startDrag(el, x, y) {
+    var r = el.getBoundingClientRect();
+    drag = { t: tasks[+el.getAttribute('data-i')], el: el, ox: x - r.left, oy: y - r.top, x: x, y: y,
+             ph: document.createElement('div'), ghost: el.cloneNode(true), zone: null };
+    drag.ph.className = 'ph'; drag.ph.style.height = r.height + 'px';
+    drag.ghost.className += ' ghost'; drag.ghost.style.width = r.width + 'px';
+    el.parentNode.insertBefore(drag.ph, el); el.style.display = 'none';
+    document.body.appendChild(drag.ghost);
+    sw = null; track.className = ''; place(null);
+    if (navigator.vibrate) navigator.vibrate(10);
+    moveDrag(x, y); autoScroll();
+  }
+  function moveDrag(x, y) {
+    drag.x = x; drag.y = y;
+    drag.ghost.style.left = (x - drag.ox) + 'px'; drag.ghost.style.top = (y - drag.oy) + 'px';
+    var zone = null, tile = null, el = document.elementFromPoint(x, y);
+    for (; el && el.nodeType === 1; el = el.parentNode) {
+      if (!zone && el.getAttribute('data-s')) zone = el;
+      if (el.className === 'tile') { tile = el; break; }
+    }
+    if (!tile) return; // outside the columns: keep the last drop spot
+    if (!zone) { // over a column header or gap: pick the zone at that height
+      var zs = tile.querySelectorAll('[data-s]');
+      for (var i = 0; i < zs.length && !zone; i++) if (y < zs[i].getBoundingClientRect().bottom) zone = zs[i];
+      zone = zone || zs[zs.length - 1];
+    }
+    if (drag.zone !== zone) {
+      if (drag.zone) drag.zone.classList.remove('over');
+      zone.classList.add('over'); drag.zone = zone;
+    }
+    var cards = zone.querySelectorAll('.card'), before = null;
+    for (i = 0; i < cards.length; i++) {
+      if (cards[i] === drag.el) continue;
+      var r = cards[i].getBoundingClientRect();
+      if (y < r.top + r.height / 2) { before = cards[i]; break; }
+    }
+    if (before) { if (drag.ph.nextSibling !== before) zone.insertBefore(drag.ph, before); }
+    else if (zone.lastChild !== drag.ph) zone.appendChild(drag.ph);
+  }
+  function endDrag() {
+    var d = drag; drag = null;
+    document.body.removeChild(d.ghost);
+    if (d.zone) d.zone.classList.remove('over');
+    var zone = d.ph.parentNode, next = d.ph.nextSibling;
+    while (next && (next === d.el || !next.getAttribute || !next.getAttribute('data-i'))) next = next.nextSibling;
+    var was = JSON.stringify(tasks);
+    moveTo(d.t, zone.getAttribute('data-s'), zone.getAttribute('data-p'), next ? tasks[+next.getAttribute('data-i')] : null);
+    if (JSON.stringify(tasks) !== was) save(); else renderTasks();
+  }
+  function autoScroll() { // scroll a column while the card is held near its top/bottom edge
+    if (!drag) return;
+    var lists = tk.querySelectorAll('.list');
+    for (var i = 0; i < lists.length; i++) {
+      var r = lists[i].getBoundingClientRect(), s = lists[i].scrollTop;
+      if (drag.x < r.left || drag.x > r.right) continue;
+      if (drag.y < r.top + 50) lists[i].scrollTop -= 10; else if (drag.y > r.bottom - 50) lists[i].scrollTop += 10;
+      if (lists[i].scrollTop !== s) moveDrag(drag.x, drag.y);
+    }
+    requestAnimationFrame(autoScroll);
+  }
+  tk.addEventListener('touchstart', function (e) {
+    var el = cardOf(e.target), p = e.touches[0];
+    if (!el || e.touches.length > 1) return;
+    press = { x: p.clientX, y: p.clientY };
+    press.timer = setTimeout(function () { press = null; startDrag(el, p.clientX, p.clientY); }, 300);
+  });
+  tk.addEventListener('touchmove', function (e) {
+    var p = e.touches[0];
+    if (drag) { e.preventDefault(); moveDrag(p.clientX, p.clientY); }
+    else if (press && (Math.abs(p.clientX - press.x) > 8 || Math.abs(p.clientY - press.y) > 8)) cancelPress(); // it's a scroll
+  }, { passive: false });
+  function touchEnd(e) { cancelPress(); if (drag) { e.preventDefault(); endDrag(); } }
+  tk.addEventListener('touchend', touchEnd);
+  tk.addEventListener('touchcancel', touchEnd);
+  tk.addEventListener('mousedown', function (e) {
+    var el = cardOf(e.target);
+    if (el && !e.button && !('ontouchstart' in window)) { press = { x: e.clientX, y: e.clientY, el: el }; e.preventDefault(); }
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (drag) moveDrag(e.clientX, e.clientY);
+    else if (press && press.el && Math.abs(e.clientX - press.x) + Math.abs(e.clientY - press.y) > 6) {
+      var p = press; press = null; startDrag(p.el, p.x, p.y); moveDrag(e.clientX, e.clientY);
+    }
+  });
+  document.addEventListener('mouseup', function () {
+    press = null;
+    if (drag) { endDrag(); justDragged = true; setTimeout(function () { justDragged = false; }, 0); }
+  });
+  tk.onclick = function (e) {
+    if (justDragged) return;
+    for (var el = e.target; el && el !== tk; el = el.parentNode) {
+      if (el.getAttribute('data-play')) return toggleTimer(tasks[+el.getAttribute('data-play')]);
+      if (el.getAttribute('data-i')) return openSheet(tasks[+el.getAttribute('data-i')]);
+    }
+  };
+
+  // ---- Ticket sheet ----
+  function openSheet(t) { cur = t; renderSheet(); $('sheet').className = 'show'; }
+  function closeSheet() { cur = null; $('sheet').className = ''; if (document.activeElement) document.activeElement.blur(); }
+  function renderSheet() {
+    var t = cur, h = '';
+    $('s-title').value = t.title;
+    MOVES.forEach(function (m, i) {
+      var on = t.status === m[0] && (!m[1] || t.prio === m[1]);
+      h += '<button class="btn' + (on ? ' on' : '') + '" type="button" data-m="' + i + '">' + m[2] + '</button>';
+    });
+    $('s-move').innerHTML = h; h = '';
+    t.times.forEach(function (r, i) {
+      h += '<li><span>' + r[0] + ' – ' + (r[1] || 'running') + '</span><button class="btn" type="button" data-r="' + i + '">×</button></li>';
+    });
+    $('s-times').innerHTML = h;
+    $('s-total').textContent = t.times.length ? fmtMin(spent(t)) : '';
+    $('s-timer').innerHTML = running(t) ? ICON_STOP + 'Stop timer' : ICON_PLAY + 'Start timer';
+    $('s-timer').className = 'btn' + (running(t) ? ' on' : '');
+    var n = new Date(), last = t.times.length && t.times[t.times.length - 1][1];
+    $('s-to').value = pad(n.getHours()) + ':' + pad(n.getMinutes());
+    $('s-from').value = last ? pad(last.split(':')[0]) + ':' + last.split(':')[1] : $('s-to').value;
+  }
+  $('s-move').onclick = function (e) {
+    var m = MOVES[e.target.getAttribute('data-m')]; if (!m) return;
+    moveTo(cur, m[0], m[1]); save();
+  };
+  $('s-times').onclick = function (e) {
+    var i = e.target.getAttribute('data-r'); if (i == null) return;
+    cur.times.splice(+i, 1); save();
+  };
+  $('s-timer').onclick = function () { toggleTimer(cur); };
+  $('s-addtime').onclick = function () {
+    var f = $('s-from').value, to = $('s-to').value;
+    if (!f || !to) return;
+    cur.times.push([f.replace(/^0(\d)/, '$1'), to.replace(/^0(\d)/, '$1')]);
+    cur.times.sort(function (a, b) { return mins(a[0]) - mins(b[0]); });
+    save();
+  };
+  $('s-title').onchange = function () { if (this.value.trim()) { cur.title = this.value.trim(); save(); } };
+  $('s-del').onclick = function () { if (confirm('Delete "' + cur.title + '"?')) { tasks.splice(tasks.indexOf(cur), 1); closeSheet(); save(); } };
+  $('s-close').onclick = closeSheet;
+  $('sheet').onclick = function (e) { if (e.target === this) closeSheet(); };
+
+  req('GET'); // load now so the board is ready when swiping over
+  var last = 0, lastMin = -1, tick = 0;
   var es = new EventSource('stream');
   es.onmessage = function (e) { last = Date.now(); render(JSON.parse(e.data)); };
   setInterval(function () {
     var n = new Date();
     $('clock').textContent = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
     $('conn').className = 'dot' + (Date.now() - last < 3000 ? ' on' : '');
+    if (n.getMinutes() !== lastMin) { lastMin = n.getMinutes(); if (tasks.some(running)) { renderTasks(); if (cur) renderSheet(); } }
+    if (page === 1 && ++tick % 10 === 0) loadTasks(); // pick up edits made to the file on the PC
   }, 1000);
 })();
 </script>

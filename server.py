@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""LAN system dashboard: serves index.html and a 1 Hz Server-Sent Events stream of system stats."""
+"""LAN system dashboard: serves index.html, a 1 Hz Server-Sent Events stream of system stats,
+and a small task board stored in a markdown file."""
 import glob
 import json
 import os
+import re
 import socket
 import subprocess
 import threading
@@ -14,6 +16,11 @@ import psutil
 PORT = int(os.environ.get("PORT", 8765))
 HERE = os.path.dirname(os.path.abspath(__file__))
 VIRTUAL_NICS = ("lo", "docker", "veth", "br-", "virbr")
+TASKS_FILE = os.path.expanduser(os.environ.get("TASKS_FILE", os.path.join(HERE, "tasks.md")))
+PRIOS = ("High", "Medium", "Low")
+# trailing time log, e.g. "(9:00-10:00; 10:50-)"; an open end means the timer is running
+TIMES_RE = re.compile(r"\s*\((\d{1,2}:\d{2}-(?:\d{1,2}:\d{2})?(?:;\s*\d{1,2}:\d{2}-(?:\d{1,2}:\d{2})?)*)\)\s*$")
+tasks_lock = threading.Lock()
 
 cond = threading.Condition()
 latest = "{}"
@@ -118,7 +125,82 @@ def sampler():
             cond.notify_all()
 
 
+def read_tasks():
+    """Parse the task file into [{title, status: backlog|progress|done, prio, times: [[start, end]]}]."""
+    try:
+        lines = open(TASKS_FILE, encoding="utf-8").read().splitlines()
+    except FileNotFoundError:
+        return []
+    tasks, status, prio = [], "backlog", "Medium"
+    for line in lines:
+        s = line.strip()
+        if s.startswith("# "):
+            h = s.lower()
+            status = "done" if "done" in h else "progress" if "prog" in h else "backlog"
+            prio = "Medium"
+        elif s.startswith("## "):
+            prio = s[3:].strip().capitalize()
+            prio = prio if prio in PRIOS else "Medium"
+        elif s[:3] in ("[ ]", "[x]", "[X]"):
+            title, times = s[3:].strip(), []
+            m = TIMES_RE.search(title)
+            if m:
+                title = title[:m.start()]
+                times = [r.strip().split("-") for r in m.group(1).split(";")]
+            tasks.append({"title": title, "status": status, "prio": prio, "times": times})
+    return tasks
+
+
+def write_tasks(tasks):
+    def items(status, prio=None):
+        out = []
+        for t in tasks:
+            if t["status"] == status and (prio is None or t["prio"] == prio):
+                times = "; ".join(a + "-" + b for a, b in t["times"])
+                out.append("[%s] %s%s" % ("x" if status == "done" else " ", " ".join(t["title"].split()),
+                                          " (%s)" % times if times else ""))
+        return out
+
+    lines = ["# Backlog"]
+    for p in PRIOS:
+        lines += ["## " + p] + items("backlog", p) + [""]
+    lines += ["", "# In progress"] + items("progress") + ["", "# Done"] + items("done")
+    tmp = TASKS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    os.replace(tmp, TASKS_FILE)
+
+
+def tasks_state():
+    try:
+        version = str(os.stat(TASKS_FILE).st_mtime_ns)
+    except FileNotFoundError:
+        version = "0"
+    return {"version": version, "tasks": read_tasks()}
+
+
 class Handler(BaseHTTPRequestHandler):
+    def send_json(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_PUT(self):
+        """Replace the whole task list; 409 if the file changed since the client last read it."""
+        if self.path != "/tasks":
+            return self.send_error(404)
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        with tasks_lock:
+            state = tasks_state()
+            if body["version"] != state["version"]:
+                return self.send_json(409, state)
+            write_tasks(body["tasks"])
+            self.send_json(200, tasks_state())
+
     def do_GET(self):
         if self.path == "/stream":
             self.send_response(200)
@@ -134,6 +216,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 return
+        elif self.path == "/tasks":
+            self.send_json(200, tasks_state())
         elif self.path in ("/", "/index.html"):
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 body = f.read()

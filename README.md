@@ -4,6 +4,28 @@ A live system monitor for this PC that you open in a web browser on another devi
 
 It shows CPU (total, each core, clock, load), CPU temperature, fan speed, SSD temperature, RAM and swap, network download/upload, GPU (NVIDIA), disk read/write and space used, battery, and uptime. Values update every second and the charts cover the last 2 minutes. Tap the CPU or Memory tile to see the top 5 processes (processes with the same name are added together, e.g. all `chrome` processes).
 
+## Tasks page
+
+Swipe left (or tap **Tasks** in the header) for a small task board: Backlog (High / Medium / Low), In progress, Done. Type in *Add a task* and press Enter to add one. Press and hold a ticket to drag it to another column, priority or position (with a mouse just drag it). The ▶ button on In progress tickets starts/stops their timer. Tap a ticket to move it, rename it, delete it, start/stop its timer or add a time range by hand. Only one timer runs at a time; starting one moves the ticket to In progress, moving a ticket out of In progress stops its timer.
+
+Tasks are stored in a plain markdown file that you can also edit by hand:
+
+```
+# Backlog
+## High
+[ ] Some task
+## Medium
+## Low
+
+# In progress
+[ ] Working on this (13:05-)
+
+# Done
+[x] Finished task (9:00-10:00; 10:50-11:00)
+```
+
+The file is `tasks.md` next to `server.py` by default; set `TASKS_FILE=/path/to/tasks.md` to use another one (for the systemd service add `Environment=TASKS_FILE=...` under `[Service]`). If the file is changed on the PC while the iPad has the page open, the iPad reloads it instead of overwriting your edit.
+
 ## Requirements
 
 - Linux with Python 3 and `psutil` (`sudo apt install python3-psutil` or `pip install psutil`)
