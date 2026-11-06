@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """LAN system dashboard: serves index.html, a 1 Hz Server-Sent Events stream of system stats,
-and a small task board stored in a markdown file (Done tasks are archived daily)."""
+and a small task board stored in a markdown file (Done tasks are archived daily).
+Tickets can be linked to a Clockify task; their finished time ranges are logged to Clockify."""
 import glob
 import json
 import os
@@ -9,14 +10,30 @@ import socket
 import subprocess
 import threading
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import psutil
 import yaml
 
+import clockify
+
 PORT = int(os.environ.get("PORT", 8765))
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_env(path):
+    """Put the KEY=value lines of a .env file into os.environ (real environment variables win)."""
+    try:
+        for line in open(path, encoding="utf-8"):
+            k, sep, v = line.strip().partition("=")
+            if sep and not k.startswith("#"):
+                os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+    except FileNotFoundError:
+        pass
+
+
+load_env(os.path.join(HERE, ".env"))
 VIRTUAL_NICS = ("lo", "docker", "veth", "br-", "virbr")
 TASKS_FILE = os.path.expanduser(os.environ.get("TASKS_FILE", os.path.join(HERE, "tasks.md")))
 ARCHIVE_DIR = os.path.join(os.path.dirname(TASKS_FILE), "archive")
@@ -26,10 +43,16 @@ except FileNotFoundError:
     CONFIG = {}
 ARCHIVE_RETENTION_DAYS = int(CONFIG.get("archive_retention_days", 30))
 PRIOS = ("High", "Medium", "Low")
-# trailing time log, e.g. "(9:00-10:00; 10:50-)"; an open end means the timer is running
-PRIO_RE = re.compile(r"\s+!(high|medium|low)\s*$", re.I)  # priority tag on Done lines
-TIMES_RE = re.compile(r"\s*\((\d{1,2}:\d{2}-(?:\d{1,2}:\d{2})?(?:;\s*\d{1,2}:\d{2}-(?:\d{1,2}:\d{2})?)*)\)\s*$")
+# trailing time log, e.g. "(9:00-10:00✓<entryId>; 10:50-)"; an open end means the timer is running,
+# ✓<entryId> means the range was logged to Clockify as that time entry
+LOGGED = "✓"
+RANGE = r"\d{1,2}:\d{2}-(?:\d{1,2}:\d{2}(?:%s[0-9a-fA-F]+)?)?" % LOGGED
+TIMES_RE = re.compile(r"\s*\((%s(?:;\s*%s)*)\)\s*$" % (RANGE, RANGE))
+PRIO_RE = re.compile(r"\s+!(high|medium|low)\s*$", re.I)  # priority tag on Done lines, before the time log
+# Clockify link before the priority tag: "{cf:<projectId>/<taskId>}"
+LINK_RE = re.compile(r"\s*\{cf:([0-9a-fA-F]+/[0-9a-fA-F]+)\}\s*$")
 tasks_lock = threading.Lock()
+clockify_error = None  # last Clockify logging error, shown on the board
 
 cond = threading.Condition()
 latest = "{}"
@@ -135,7 +158,8 @@ def sampler():
 
 
 def read_tasks():
-    """Parse the task file into [{title, status: backlog|progress|done, prio, times: [[start, end]]}]."""
+    """Parse the task file into
+    [{title, status: backlog|progress|done, prio, clockify: "projectId/taskId" or "", times: [[start, end, clockify entry id or ""]]}]."""
     try:
         lines = open(TASKS_FILE, encoding="utf-8").read().splitlines()
     except FileNotFoundError:
@@ -151,15 +175,22 @@ def read_tasks():
             prio = s[3:].strip().capitalize()
             prio = prio if prio in PRIOS else "Medium"
         elif s[:3] in ("[ ]", "[x]", "[X]"):
-            title, times = s[3:].strip(), []
+            title, times, link = s[3:].strip(), [], ""
             m = TIMES_RE.search(title)
             if m:
                 title = title[:m.start()]
-                times = [r.strip().split("-") for r in m.group(1).split(";")]
+                for r in m.group(1).split(";"):
+                    start, end = r.strip().split("-")
+                    end, _, entry = end.partition(LOGGED)
+                    times.append([start, end, entry])
             p = PRIO_RE.search(title)
             if p:
                 title = title[:p.start()]
-            tasks.append({"title": title, "status": status, "prio": p.group(1).capitalize() if p else prio, "times": times})
+            m = LINK_RE.search(title)
+            if m:
+                title, link = title[:m.start()], m.group(1)
+            tasks.append({"title": title, "status": status, "prio": p.group(1).capitalize() if p else prio,
+                          "clockify": link, "times": times})
     return tasks
 
 
@@ -168,9 +199,10 @@ def write_tasks(tasks):
         out = []
         for t in tasks:
             if t["status"] == status and (prio is None or t["prio"] == prio):
-                times = "; ".join(a + "-" + b for a, b in t["times"])
-                out.append("[%s] %s%s%s" % ("x" if status == "done" else " ", " ".join(t["title"].split()),
-                                            "" if prio else " !" + t["prio"], " (%s)" % times if times else ""))
+                times = "; ".join(r[0] + "-" + r[1] + (LOGGED + r[2] if r[2] else "") for r in t["times"])
+                out.append("[%s] %s%s%s%s" % ("x" if status == "done" else " ", " ".join(t["title"].split()),
+                                              " {cf:%s}" % t["clockify"] if t.get("clockify") else "",
+                                              "" if prio else " !" + t["prio"], " (%s)" % times if times else ""))
         return out
 
     lines = []
@@ -222,9 +254,81 @@ def prune_archive():
             os.remove(os.path.join(ARCHIVE_DIR, name))
 
 
+def merge_ids(tasks, old):
+    """Give back the entry ids a client hasn't seen yet (logged by a retry after its last load),
+    matched by link + range, so those ranges aren't logged twice."""
+    have = {r[2] for t in tasks for r in t["times"]}
+    free = {}
+    for t in old:
+        for r in t["times"]:
+            if r[2] and r[2] not in have:
+                free.setdefault((t["clockify"], r[0], r[1]), []).append(r[2])
+    for t in tasks:
+        for r in t["times"]:
+            ids = free.get((t["clockify"], r[0], r[1]))
+            if not r[2] and ids:
+                r[2] = ids.pop(0)
+
+
+def range_times(day, r):
+    """A finished range as aware datetimes ending on `day` (an end before the start means it began the day before)."""
+    start, end = (datetime.combine(day, datetime.strptime(x, "%H:%M").time()).astimezone() for x in r[:2])
+    return (start - timedelta(days=1) if start > end else start), end
+
+
+def sync_changes(tasks, old):
+    """Mirror changes of logged ranges to Clockify: a removed range (or ticket) deletes its entry; a changed
+    range, link or title updates it (keeping its day). Raises ClockifyError on the first failure."""
+    before = {r[2]: (t["clockify"], t["title"], r[0], r[1]) for t in old for r in t["times"] if r[2]}
+    now = {r[2]: (t, r) for t in tasks for r in t["times"] if r[2]}
+    for entry in before.keys() - now.keys():
+        clockify.delete_entry(entry)
+    for entry, (t, r) in now.items():
+        was = before.get(entry)
+        if was and was != (t["clockify"], t["title"], r[0], r[1]) and t["clockify"] and r[1]:
+            project_id, task_id = t["clockify"].split("/")
+            clockify.update_entry(entry, project_id, task_id, t["title"], *range_times(clockify.entry_day(entry), r))
+
+
+def log_pending(tasks, day):
+    """Log the finished, not yet logged ranges of linked tasks to Clockify as entries ending on `day`
+    and store the entry ids. True if any was logged."""
+    global clockify_error
+    changed = False
+    for t in tasks:
+        if not t["clockify"]:
+            continue
+        project_id, task_id = t["clockify"].split("/")
+        for r in t["times"]:
+            if not r[1] or r[2] or r[0] == r[1]:
+                continue
+            try:
+                r[2] = clockify.add_entry(project_id, task_id, t["title"], *range_times(day, r))
+            except clockify.ClockifyError as e:
+                clockify_error = "%s: %s" % (t["title"], e)
+                return changed  # retried by the archiver thread
+            changed, clockify_error = True, None
+    return changed
+
+
+def retry_logging():
+    """Log ranges that failed before. The marks are written without changing the file's mtime: it is the
+    board's version (open pages would get a conflict) and the archive's day."""
+    try:
+        st = os.stat(TASKS_FILE)
+    except FileNotFoundError:
+        return
+    tasks = read_tasks()
+    if log_pending(tasks, date.fromtimestamp(st.st_mtime)):
+        write_tasks(tasks)
+        os.utime(TASKS_FILE, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
 def archiver():
     while True:
         with tasks_lock:
+            if clockify.enabled():
+                retry_logging()
             archive_done()
         prune_archive()
         time.sleep(60)
@@ -235,7 +339,7 @@ def tasks_state():
         version = str(os.stat(TASKS_FILE).st_mtime_ns)
     except FileNotFoundError:
         version = "0"
-    return {"version": version, "tasks": read_tasks()}
+    return {"version": version, "tasks": read_tasks(), "clockify_error": clockify_error}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -249,7 +353,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_PUT(self):
-        """Replace the whole task list; 409 if the file changed since the client last read it."""
+        """Replace the whole task list; 409 if the file changed since the client last read it.
+        Changes of logged ranges are mirrored to Clockify first (502 and nothing saved if that fails); then newly
+        finished ranges of linked tasks are logged. The reply has the tasks in the client's order."""
         if self.path != "/tasks":
             return self.send_error(404)
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -257,8 +363,19 @@ class Handler(BaseHTTPRequestHandler):
             state = tasks_state()
             if body["version"] != state["version"]:
                 return self.send_json(409, state)
-            write_tasks(body["tasks"])
-            self.send_json(200, tasks_state())
+            tasks = [dict(t, clockify=t.get("clockify") or "",
+                          times=[[r[0], r[1], r[2] if len(r) > 2 and isinstance(r[2], str) else ""]
+                                 for r in t["times"]]) for t in body["tasks"]]
+            merge_ids(tasks, state["tasks"])
+            if clockify.enabled():
+                try:
+                    sync_changes(tasks, state["tasks"])
+                except clockify.ClockifyError as e:
+                    return self.send_json(502, dict(state, error="Clockify: %s. Change not saved." % e))
+            write_tasks(tasks)  # save first: the time is kept even if Clockify is slow or down
+            if clockify.enabled() and log_pending(tasks, date.today()):
+                write_tasks(tasks)
+            self.send_json(200, dict(tasks_state(), tasks=tasks))
 
     def do_GET(self):
         if self.path == "/stream":
@@ -277,6 +394,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
         elif self.path == "/tasks":
             self.send_json(200, tasks_state())
+        elif self.path.split("?")[0] == "/clockify":
+            if not clockify.enabled():
+                return self.send_json(200, {"enabled": False, "projects": []})
+            try:
+                self.send_json(200, {"enabled": True, "projects": clockify.catalog(refresh="refresh" in self.path)})
+            except clockify.ClockifyError as e:
+                self.send_json(502, {"error": str(e)})
         elif self.path in ("/", "/index.html"):
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 body = f.read()

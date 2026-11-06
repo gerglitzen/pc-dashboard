@@ -124,6 +124,7 @@
   .card.p-Low { border-left: 4px solid var(--text-muted); }
   .card.run { box-shadow: 0 0 0 1.5px var(--series-1), var(--shadow); }
   .card.has-play { padding-right: 52px; }
+  .card .cfn { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
   .card .m { font-size: 13px; color: var(--text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
   .card.run .m { color: var(--series-1); }
   .play { position: absolute; right: 10px; top: 50%; margin-top: -17px; width: 34px; height: 34px; border-radius: 50%; border: 0;
@@ -149,11 +150,18 @@
   #s-prio .btn { border-left: 4px solid var(--pc); }
   #sheet input { font: inherit; font-size: 16px; color: var(--text-primary); background: var(--surface-0);
     border: 1px solid var(--track); border-radius: 8px; padding: 7px 8px; -webkit-appearance: none; }
+  #sheet select { display: block; width: 100%; margin-bottom: 8px; font: inherit; font-size: 16px; color: var(--text-primary);
+    background: var(--surface-0); border: 1px solid var(--track); border-radius: 8px; padding: 7px 8px; }
+  #cf-err { color: var(--critical); margin: -2px 0 6px; }
+  #s-times .lg { color: var(--text-muted); font-size: 13px; margin-left: 8px; }
   #sheet #s-title { width: 100%; margin-left: -9px; font-size: 21px; font-weight: 600; background: transparent; border-color: transparent; outline: none; }
   #sheet #s-title:focus { border-color: var(--track); }
   #s-times { list-style: none; font-size: 15px; font-variant-numeric: tabular-nums; }
   #s-times li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-top: 1px solid var(--grid); }
-  #s-times li .btn { padding: 2px 10px; }
+  #s-times li .btn { padding: 4px 12px; margin-left: 6px; }
+  #s-times .rg[data-ed] { cursor: pointer; border-bottom: 1px dashed var(--text-muted); -webkit-tap-highlight-color: transparent; }
+  #s-times li.ed input { width: 108px; }
+  .btn.del { color: #fff; background: var(--critical); border-color: var(--critical); font-weight: 600; }
   .timebar { display: flex; align-items: center; flex-wrap: wrap; margin-top: 10px; }
   .timebar > * { margin: 0 8px 8px 0; }
   #s-timer { display: flex; align-items: center; }
@@ -239,6 +247,8 @@
   <div id="s-move"></div>
   <div class="label">Priority</div>
   <div id="s-prio"></div>
+  <div id="s-cf" style="display:none"><div class="label">Clockify</div>
+    <select id="s-proj"></select><select id="s-task"></select><div class="sub" id="cf-err"></div></div>
   <div class="label"><span>Time</span><span id="s-total"></span></div>
   <ul id="s-times"></ul>
   <div class="timebar"><button class="btn" id="s-timer" type="button"></button></div>
@@ -444,9 +454,12 @@
   window.addEventListener('resize', function () { place(null); });
 
   // ---- Tasks: stored by the server in a markdown file ----
-  // task = {title, status: 'backlog'|'progress'|'done', prio: 'High'|'Medium'|'Low', times: [[start, end]]}
-  // times are 'H:MM'; an empty end means the timer is running
-  var tasks = [], version = null, cur = null, busy = false;
+  // task = {title, status: 'backlog'|'progress'|'done', prio: 'High'|'Medium'|'Low', clockify: 'projectId/taskId' or '',
+  //         times: [[start, end, entryId]]}
+  // times are 'H:MM'; an empty end means the timer is running; entryId = its Clockify time entry ('' = not logged; set by the server)
+  var tasks = [], version = null, cur = null, busy = null, queued = false;
+  var cf = null, cfTask = {}, cfErr = null, sheetProj = ''; // Clockify projects (null = off), taskId -> [project, task]
+  var editIdx = null; // index of the time range being edited in place in the sheet
   var PRIOS = ['High', 'Medium', 'Low'], PRIO_COLOR = { High: '--critical', Medium: '--warning', Low: '--text-muted' };
   var MOVES = [['backlog', 'Backlog'], ['progress', 'In progress'], ['done', 'Done']];
   var ICON_PLAY = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.2v9.6l8-4.8z" fill="currentColor"/></svg>';
@@ -490,25 +503,56 @@
   function req(method, body) {
     var x = new XMLHttpRequest();
     x.open(method, 'tasks');
-    busy = true;
+    busy = method;
     x.onload = function () {
-      busy = false;
+      busy = null;
       var r = JSON.parse(x.responseText);
       version = r.version;
-      if (method === 'GET' || x.status === 409) {
-        if (x.status === 409) { closeSheet(); toast('Task file changed on the PC — reloaded, please redo your last change'); }
+      if (method === 'GET' || x.status === 409 || x.status === 502) {
+        if (x.status !== 200) { queued = false; closeSheet(); }
+        if (x.status === 409) toast('Task file changed on the PC — reloaded, please redo your last change');
+        if (x.status === 502) toast(r.error);
         tasks = r.tasks; renderTasks();
-      }
+      } else markLogged(r.tasks);
+      if (r.clockify_error && r.clockify_error !== cfErr) toast('Clockify: ' + r.clockify_error);
+      cfErr = r.clockify_error;
+      if (cur) renderSheet();
+      if (queued) { queued = false; save(); }
     };
-    x.onerror = function () { busy = false; toast('Could not reach the PC — change not saved'); };
+    x.onerror = function () { busy = null; queued = false; toast('Could not reach the PC — change not saved'); };
     x.send(body ? JSON.stringify(body) : null);
   }
   function loadTasks() { if (!busy && !cur && !drag && document.activeElement !== $('add')) req('GET'); }
-  function save() { req('PUT', { version: version, tasks: tasks }); renderTasks(); if (cur) renderSheet(); }
+  function save() { // a save during another one waits for its new version instead of getting a conflict
+    if (busy === 'PUT') queued = true; else req('PUT', { version: version, tasks: tasks });
+    renderTasks(); if (cur) renderSheet();
+  }
+  function markLogged(rt) { // copy the server's "logged to Clockify" marks (same order as ours) onto our ranges
+    rt.forEach(function (t, i) {
+      var o = tasks[i]; if (!o || o.title !== t.title) return;
+      t.times.forEach(function (q, j) { var p = o.times[j]; if (p && p[0] === q[0] && p[1] === q[1]) p[2] = q[2]; });
+    });
+    renderTasks();
+  }
+  function loadClockify() {
+    var x = new XMLHttpRequest();
+    x.open('GET', 'clockify');
+    x.onload = function () {
+      var r = JSON.parse(x.responseText);
+      if (x.status !== 200) return toast('Clockify: ' + r.error);
+      if (!r.enabled) return;
+      cf = r.projects; cfTask = {};
+      cf.forEach(function (p) { p.tasks.forEach(function (t) { cfTask[t.id] = [p, t]; }); });
+      $('s-cf').style.display = ''; renderTasks(); if (cur) renderSheet();
+    };
+    x.send();
+  }
 
   function card(t) {
     var i = tasks.indexOf(t), run = running(t), play = t.status === 'progress';
     var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title);
+    var link = t.clockify && cfTask[t.clockify.split('/')[1]];
+    if (link) h += '<div class="cfn">' + esc(link[1].name) + '</div>';
     if (t.times.length)
       h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(t)) + ' · ' +
            t.times.map(function (r) { return r[0] + '–' + (r[1] || 'now'); }).join(', ') + '</div>';
@@ -545,7 +589,7 @@
   $('add').oninput = function () { askPrio(null); };
   $('add-prio').onclick = function (e) {
     var p = e.target.getAttribute('data-p'); if (!p || !newTitle) return;
-    tasks.push({ title: newTitle, status: 'backlog', prio: p, times: [] });
+    tasks.push({ title: newTitle, status: 'backlog', prio: p, clockify: '', times: [] });
     $('add').value = ''; askPrio(null); save();
   };
 
@@ -653,7 +697,7 @@
   };
 
   // ---- Ticket sheet ----
-  function openSheet(t) { cur = t; renderSheet(); $('sheet').className = 'show'; }
+  function openSheet(t) { cur = t; editIdx = null; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; }
   function closeSheet() { cur = null; $('sheet').className = ''; if (document.activeElement) document.activeElement.blur(); }
   function renderSheet() {
     var t = cur, h = '';
@@ -666,17 +710,59 @@
       h += '<button class="btn' + (t.prio === p ? ' on' : '') + '" type="button" data-p="' + p + '" style="--pc:var(' + PRIO_COLOR[p] + ')">' + p + '</button>';
     });
     $('s-prio').innerHTML = h; h = '';
+    var ef = $('e-from'), et = $('e-to'); // keep what is being typed across re-renders
+    ef = ef ? ef.value : editIdx !== null && hhmm(t.times[editIdx][0]);
+    et = et ? et.value : editIdx !== null && hhmm(t.times[editIdx][1]);
     t.times.forEach(function (r, i) {
-      h += '<li><span>' + r[0] + ' – ' + (r[1] || 'running') + '</span><button class="btn" type="button" data-r="' + i + '">×</button></li>';
+      var lg = r[2] ? '✓ Clockify' : t.clockify && r[1] ? 'not in Clockify yet' : '', del = '<button class="btn del" type="button" data-r="' + i + '">Del</button>';
+      if (i === editIdx)
+        h += '<li class="ed"><span><input id="e-from" type="time" value="' + ef + '"> – <input id="e-to" type="time" value="' + et +
+             '"></span><span><button class="btn on" type="button" data-ok="1">Confirm</button>' + del + '</span></li>';
+      else // a finished range is edited by tapping it
+        h += '<li><span><span class="rg"' + (r[1] ? ' data-ed="' + i + '" title="Tap to edit"' : '') + '>' + r[0] + ' – ' + (r[1] || 'running') +
+             '</span>' + (lg ? '<span class="lg">' + lg + '</span>' : '') + '</span><span>' + del + '</span></li>';
     });
     $('s-times').innerHTML = h;
+    if (cf) renderClockify(t);
     $('s-total').textContent = t.times.length ? fmtMin(spent(t)) : '';
     $('s-timer').innerHTML = running(t) ? ICON_STOP + 'Stop timer' : ICON_PLAY + 'Start timer';
     $('s-timer').className = 'btn' + (running(t) ? ' on' : '');
     var n = new Date(), last = t.times.length && t.times[t.times.length - 1][1];
     $('s-to').value = pad(n.getHours()) + ':' + pad(n.getMinutes());
-    $('s-from').value = last ? pad(last.split(':')[0]) + ':' + last.split(':')[1] : $('s-to').value;
+    $('s-from').value = last ? hhmm(last) : $('s-to').value;
   }
+  function hhmm(hm) { return pad(hm.split(':')[0]) + ':' + hm.split(':')[1]; }
+  function renderClockify(t) {
+    var tid = (t.clockify || '').split('/')[1], h = '<option value="">— Not linked —</option>', client = null, known = false;
+    cf.forEach(function (p) {
+      if (p.client !== client) { h += (client === null ? '' : '</optgroup>') + '<optgroup label="' + esc(p.client || 'No client') + '">'; client = p.client; }
+      h += '<option value="' + p.id + '"' + (p.id === sheetProj ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+      known = known || p.id === sheetProj;
+    });
+    if (sheetProj && !known) h += '<option value="' + esc(sheetProj) + '" selected>(project not available)</option>';
+    $('s-proj').innerHTML = h + (client === null ? '' : '</optgroup>');
+    h = '<option value="">' + (sheetProj ? '— Pick a task —' : '') + '</option>';
+    cf.forEach(function (p) {
+      if (p.id === sheetProj) p.tasks.forEach(function (x) {
+        h += '<option value="' + x.id + '"' + (x.id === tid ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+      });
+    });
+    if (tid && !cfTask[tid] && sheetProj === t.clockify.split('/')[0]) h += '<option value="' + esc(tid) + '" selected>(task not available)</option>';
+    $('s-task').innerHTML = h; $('s-task').disabled = !sheetProj;
+    $('cf-err').textContent = cfErr || '';
+  }
+  $('s-proj').onchange = function () {
+    sheetProj = this.value;
+    if (!sheetProj && cur.clockify) { cur.clockify = ''; save(); } else renderSheet();
+  };
+  $('s-task').onchange = function () {
+    var link = this.value ? sheetProj + '/' + this.value : '';
+    var old = cur.times.filter(function (r) { return r[1] && !r[2]; }).length;
+    if (link && !cur.clockify && old &&
+        !confirm('This ticket already has ' + old + ' time range(s) that are not in Clockify. Linking logs them too, dated today. Link it?'))
+      return renderSheet();
+    cur.clockify = link; save();
+  };
   $('s-move').onclick = function (e) {
     var m = MOVES[e.target.getAttribute('data-m')]; if (!m) return;
     moveTo(cur, m[0]); save();
@@ -685,24 +771,34 @@
     var p = e.target.getAttribute('data-p'); if (!p) return;
     cur.prio = p; save();
   };
-  $('s-times').onclick = function (e) {
-    var i = e.target.getAttribute('data-r'); if (i == null) return;
-    cur.times.splice(+i, 1); save();
+  function hm(v) { return v.replace(/^0(\d)/, '$1'); } // '09:05' -> '9:05'
+  $('s-times').onclick = function (e) { // tap a range to edit it in place, Confirm saves it, Del deletes it
+    var a = e.target.getAttribute.bind(e.target);
+    if (a('data-ed') != null) { editIdx = +a('data-ed'); $('s-times').innerHTML = ''; renderSheet(); $('e-from').focus(); }
+    else if (a('data-ok') != null) {
+      var f = $('e-from').value, to = $('e-to').value; if (!f || !to) return;
+      var r = cur.times[editIdx]; r[0] = hm(f); r[1] = hm(to); editIdx = null; // r keeps its Clockify entry
+      cur.times.sort(function (x, y) { return mins(x[0]) - mins(y[0]); });
+      save();
+    } else if (a('data-r') != null) { editIdx = null; cur.times.splice(+a('data-r'), 1); save(); }
   };
   $('s-timer').onclick = function () { toggleTimer(cur); };
   $('s-addtime').onclick = function () {
     var f = $('s-from').value, to = $('s-to').value;
     if (!f || !to) return;
-    cur.times.push([f.replace(/^0(\d)/, '$1'), to.replace(/^0(\d)/, '$1')]);
+    cur.times.push([hm(f), hm(to), '']);
     cur.times.sort(function (a, b) { return mins(a[0]) - mins(b[0]); });
     save();
   };
   $('s-title').onchange = function () { if (this.value.trim()) { cur.title = this.value.trim(); save(); } };
-  $('s-del').onclick = function () { if (confirm('Delete "' + cur.title + '"?')) { tasks.splice(tasks.indexOf(cur), 1); closeSheet(); save(); } };
+  $('s-del').onclick = function () {
+    var n = cur.times.filter(function (r) { return r[2]; }).length;
+    if (confirm('Delete "' + cur.title + '"?' + (n ? ' Its ' + n + ' Clockify time entr' + (n > 1 ? 'ies are' : 'y is') + ' deleted too.' : ''))) { tasks.splice(tasks.indexOf(cur), 1); closeSheet(); save(); } };
   $('s-close').onclick = closeSheet;
   $('sheet').onclick = function (e) { if (e.target === this) closeSheet(); };
 
   req('GET'); // load now so the board is ready when swiping over
+  loadClockify();
   var last = 0, lastMin = -1, tick = 0;
   var es = new EventSource('stream');
   es.onmessage = function (e) { last = Date.now(); render(JSON.parse(e.data)); };

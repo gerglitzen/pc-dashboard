@@ -37,6 +37,27 @@ On a new day, Done tasks are moved out of `tasks.md` into `archive/YYYY-MM-DD.js
 archive_retention_days: 30
 ```
 
+## Clockify
+
+A ticket can be linked to a Clockify task: tap the ticket, pick the project and the task under **Clockify**. The list shows the open tasks of active projects that you can log time to (assigned to you, to one of your groups, or to anyone). Every time range you finish on a linked ticket (stopping its timer or *Add time*) is logged to Clockify as a time entry for today, with the ticket title as description. Logged ranges get a ✓ in the ticket; if logging fails, the error is shown and the server retries every minute.
+
+Logged ranges stay in sync with Clockify:
+
+- **Edit** a range: tap its times, change them, *Confirm* → its entry is updated (same day).
+- **Del** on a range, or deleting the ticket → its entries are deleted.
+- Renaming the ticket or linking it to another task → its entries are updated.
+- Unlinking the ticket (*Not linked*) only stops logging new ranges; existing entries stay.
+- If Clockify can't be reached for an edit or delete, the change is not saved and the board shows why.
+- Ranges that were already on the ticket when you link it are logged too, dated today (you are asked first).
+
+Setup: copy `.env.sample` to `.env` next to `server.py` and fill in `CLOCKIFY_API_KEY` and `CLOCKIFY_USER_ID`, then restart the server. Without them the Clockify section is hidden. The project/task list is cached; restart the server or open `http://<pc-ip>:8765/clockify?refresh` to reload it.
+
+In `tasks.md` the link and the logged marks look like this:
+
+```
+[ ] Planning {cf:<projectId>/<taskId>} (9:00-10:00✓<timeEntryId>; 10:50-)
+```
+
 ## Requirements
 
 - Linux with [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`). Dependencies (`psutil`, `pyyaml`) are listed in `pyproject.toml`; `uv run` installs them into `.venv` on first start
