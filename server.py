@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """LAN system dashboard: serves index.html, a 1 Hz Server-Sent Events stream of system stats,
-and a small task board stored in a markdown file."""
+and a small task board stored in a markdown file (Done tasks are archived daily)."""
 import glob
 import json
 import os
@@ -9,14 +9,22 @@ import socket
 import subprocess
 import threading
 import time
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import psutil
+import yaml
 
 PORT = int(os.environ.get("PORT", 8765))
 HERE = os.path.dirname(os.path.abspath(__file__))
 VIRTUAL_NICS = ("lo", "docker", "veth", "br-", "virbr")
 TASKS_FILE = os.path.expanduser(os.environ.get("TASKS_FILE", os.path.join(HERE, "tasks.md")))
+ARCHIVE_DIR = os.path.join(os.path.dirname(TASKS_FILE), "archive")
+try:
+    CONFIG = yaml.safe_load(open(os.path.join(HERE, "config.yaml"), encoding="utf-8")) or {}
+except FileNotFoundError:
+    CONFIG = {}
+ARCHIVE_RETENTION_DAYS = int(CONFIG.get("archive_retention_days", 30))
 PRIOS = ("High", "Medium", "Low")
 # trailing time log, e.g. "(9:00-10:00; 10:50-)"; an open end means the timer is running
 TIMES_RE = re.compile(r"\s*\((\d{1,2}:\d{2}-(?:\d{1,2}:\d{2})?(?:;\s*\d{1,2}:\d{2}-(?:\d{1,2}:\d{2})?)*)\)\s*$")
@@ -171,6 +179,50 @@ def write_tasks(tasks):
     os.replace(tmp, TASKS_FILE)
 
 
+def archive_done():
+    """If the task file was last changed before today, move its Done tasks to archive/<that day>.jsonl."""
+    try:
+        day = date.fromtimestamp(os.stat(TASKS_FILE).st_mtime)
+    except FileNotFoundError:
+        return
+    if day >= date.today():
+        return
+    tasks = read_tasks()
+    done = [t for t in tasks if t["status"] == "done"]
+    if not done:
+        return
+    os.makedirs(ARCHIVE_DIR, exist_ok=True)
+    with open(os.path.join(ARCHIVE_DIR, day.isoformat() + ".jsonl"), "a", encoding="utf-8") as f:
+        for t in done:
+            f.write(json.dumps({"date": day.isoformat(), "title": t["title"], "times": t["times"]},
+                               ensure_ascii=False) + "\n")
+    write_tasks([t for t in tasks if t["status"] != "done"])
+
+
+def prune_archive():
+    """Delete archive/YYYY-MM-DD.jsonl files older than ARCHIVE_RETENTION_DAYS."""
+    cutoff = date.today() - timedelta(days=ARCHIVE_RETENTION_DAYS)
+    try:
+        names = os.listdir(ARCHIVE_DIR)
+    except FileNotFoundError:
+        return
+    for name in names:
+        try:
+            day = date.fromisoformat(name.removesuffix(".jsonl"))
+        except ValueError:
+            continue
+        if name.endswith(".jsonl") and day < cutoff:
+            os.remove(os.path.join(ARCHIVE_DIR, name))
+
+
+def archiver():
+    while True:
+        with tasks_lock:
+            archive_done()
+        prune_archive()
+        time.sleep(60)
+
+
 def tasks_state():
     try:
         version = str(os.stat(TASKS_FILE).st_mtime_ns)
@@ -235,6 +287,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=sampler, daemon=True).start()
+    threading.Thread(target=archiver, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
     print(f"Dashboard on http://0.0.0.0:{PORT}  (open http://<this-pc-ip>:{PORT} on the iPad)")

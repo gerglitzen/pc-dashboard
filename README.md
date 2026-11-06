@@ -26,9 +26,15 @@ Tasks are stored in a plain markdown file that you can also edit by hand:
 
 The file is `tasks.md` next to `server.py` by default; set `TASKS_FILE=/path/to/tasks.md` to use another one (for the systemd service add `Environment=TASKS_FILE=...` under `[Service]`). If the file is changed on the PC while the iPad has the page open, the iPad reloads it instead of overwriting your edit.
 
+On a new day, Done tasks are moved out of `tasks.md` into `archive/YYYY-MM-DD.jsonl` (next to the task file, one JSON object per line: `{"date", "title", "times"}`), so the board starts each day with an empty Done column. The date is the day the task file was last changed. Archive files older than 30 days are deleted; change this in `config.yaml`:
+
+```yaml
+archive_retention_days: 30
+```
+
 ## Requirements
 
-- Linux with Python 3 and `psutil` (`sudo apt install python3-psutil` or `pip install psutil`)
+- Linux with Python 3, `psutil` and PyYAML (`sudo apt install python3-psutil python3-yaml` or `pip install psutil pyyaml`)
 - Optional: `nvidia-smi` for GPU stats (the GPU tile shows "not available" without it)
 
 ## Run manually

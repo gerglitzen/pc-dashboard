@@ -1,0 +1,3 @@
+# Done tasks are moved to archive/YYYY-MM-DD.jsonl (next to the task file) on the next day.
+# Archive files older than this many days are deleted.
+archive_retention_days: 30
