@@ -5,7 +5,6 @@ import os
 import threading
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 BASE = "https://api.clockify.me/api/v1"
@@ -47,24 +46,16 @@ def _workspace():
 
 
 def catalog(refresh=False):
-    """Active projects with the open tasks this user can log time to: tasks assigned to them,
-    to one of their user groups, or to anyone. Cached until refresh=True."""
+    """Active projects with the open tasks assigned to this user. Cached until refresh=True."""
     global _catalog
     with _lock:
         if _catalog is None or refresh:
             ws, me = _workspace(), os.environ["CLOCKIFY_USER_ID"]
-            groups = {g["id"] for g in _call(f"/workspaces/{ws}/user-groups?page-size=5000")
-                      if me in g.get("userIds", [])}
-            projects = _call(f"/workspaces/{ws}/projects?archived=false&page-size=5000")
-            with ThreadPoolExecutor(8) as ex:
-                task_lists = list(ex.map(
-                    lambda p: _call(f"/workspaces/{ws}/projects/{p['id']}/tasks?is-active=true&page-size=5000"),
-                    projects))
             out = []
-            for p, tasks in zip(projects, task_lists):
-                mine = [{"id": t["id"], "name": t["name"], "billable": t.get("billable")} for t in tasks
-                        if t["status"] == "ACTIVE" and (me in t["assigneeIds"] or groups & set(t["userGroupIds"])
-                                                        or not (t["assigneeIds"] or t["userGroupIds"]))]
+            # hydrated=true includes each project's tasks, so this is one call instead of one per project
+            for p in _call(f"/workspaces/{ws}/projects?archived=false&hydrated=true&page-size=5000"):
+                mine = [{"id": t["id"], "name": t["name"], "billable": t.get("billable")} for t in p.get("tasks") or []
+                        if t["status"] == "ACTIVE" and me in t["assigneeIds"]]
                 if mine:
                     out.append({"id": p["id"], "name": p["name"], "client": p.get("clientName") or "",
                                 "tasks": sorted(mine, key=lambda t: t["name"].lower())})

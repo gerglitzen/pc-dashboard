@@ -534,16 +534,16 @@
     });
     renderTasks();
   }
-  function loadClockify() {
+  function loadClockify(refresh) {
     var x = new XMLHttpRequest();
-    x.open('GET', 'clockify');
+    x.open('GET', refresh ? 'clockify?refresh' : 'clockify');
     x.onload = function () {
       var r = JSON.parse(x.responseText);
       if (x.status !== 200) return toast('Clockify: ' + r.error);
       if (!r.enabled) return;
       cf = r.projects; cfTask = {};
       cf.forEach(function (p) { p.tasks.forEach(function (t) { cfTask[t.id] = [p, t]; }); });
-      $('s-cf').style.display = ''; renderTasks(); if (cur) renderSheet();
+      $('s-cf').style.display = ''; renderTasks(); if (cur) renderClockify(cur); // not renderSheet: keep what is being typed
     };
     x.send();
   }
@@ -697,7 +697,7 @@
   };
 
   // ---- Ticket sheet ----
-  function openSheet(t) { cur = t; editIdx = null; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; }
+  function openSheet(t) { cur = t; editIdx = null; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; if (cf) loadClockify(true); }
   function closeSheet() { cur = null; $('sheet').className = ''; if (document.activeElement) document.activeElement.blur(); }
   function renderSheet() {
     var t = cur, h = '';

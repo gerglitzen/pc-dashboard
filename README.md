@@ -39,7 +39,7 @@ archive_retention_days: 30
 
 ## Clockify
 
-A ticket can be linked to a Clockify task: tap the ticket, pick the project and the task under **Clockify**. The list shows the open tasks of active projects that you can log time to (assigned to you, to one of your groups, or to anyone). Every time range you finish on a linked ticket (stopping its timer or *Add time*) is logged to Clockify as a time entry for today, with the ticket title as description. Logged ranges get a ✓ in the ticket; if logging fails, the error is shown and the server retries every minute.
+A ticket can be linked to a Clockify task: tap the ticket, pick the project and the task under **Clockify**. The list shows the open tasks of active projects that are assigned to you. Every time range you finish on a linked ticket (stopping its timer or *Add time*) is logged to Clockify as a time entry for today, with the ticket title as description. Logged ranges get a ✓ in the ticket; if logging fails, the error is shown and the server retries every minute.
 
 Logged ranges stay in sync with Clockify:
 
@@ -50,7 +50,7 @@ Logged ranges stay in sync with Clockify:
 - If Clockify can't be reached for an edit or delete, the change is not saved and the board shows why.
 - Ranges that were already on the ticket when you link it are logged too, dated today (you are asked first).
 
-Setup: copy `.env.sample` to `.env` next to `server.py` and fill in `CLOCKIFY_API_KEY` and `CLOCKIFY_USER_ID`, then restart the server. Without them the Clockify section is hidden. The project/task list is cached; restart the server or open `http://<pc-ip>:8765/clockify?refresh` to reload it.
+Setup: copy `.env.sample` to `.env` next to `server.py` and fill in `CLOCKIFY_API_KEY` and `CLOCKIFY_USER_ID`, then restart the server. Without them the Clockify section is hidden. The project/task list is reloaded from Clockify each time you open a ticket.
 
 In `tasks.md` the link and the logged marks look like this:
 
