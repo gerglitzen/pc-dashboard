@@ -34,14 +34,14 @@ archive_retention_days: 30
 
 ## Requirements
 
-- Linux with Python 3, `psutil` and PyYAML (`sudo apt install python3-psutil python3-yaml` or `pip install psutil pyyaml`)
+- Linux with [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`). Dependencies (`psutil`, `pyyaml`) are listed in `pyproject.toml`; `uv run` installs them into `.venv` on first start
 - Optional: `nvidia-smi` for GPU stats (the GPU tile shows "not available" without it)
 
 ## Run manually
 
 ```bash
-python3 server.py            # listens on port 8765
-PORT=9000 python3 server.py  # use a different port
+uv run server.py            # listens on port 8765
+PORT=9000 uv run server.py  # use a different port
 ```
 
 Open `http://<pc-ip>:8765` on the iPad. Find the PC's IP with `hostname -I`.
@@ -70,7 +70,7 @@ Description=PC Dashboard (LAN system monitor)
 After=network-online.target
 
 [Service]
-ExecStart=/usr/bin/python3 $(pwd)/server.py
+ExecStart=$(which uv) run --project $(pwd) $(pwd)/server.py
 Restart=on-failure
 Environment=PYTHONUNBUFFERED=1
 
