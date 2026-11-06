@@ -27,6 +27,7 @@ except FileNotFoundError:
 ARCHIVE_RETENTION_DAYS = int(CONFIG.get("archive_retention_days", 30))
 PRIOS = ("High", "Medium", "Low")
 # trailing time log, e.g. "(9:00-10:00; 10:50-)"; an open end means the timer is running
+PRIO_RE = re.compile(r"\s+!(high|medium|low)\s*$", re.I)  # priority tag on Done lines
 TIMES_RE = re.compile(r"\s*\((\d{1,2}:\d{2}-(?:\d{1,2}:\d{2})?(?:;\s*\d{1,2}:\d{2}-(?:\d{1,2}:\d{2})?)*)\)\s*$")
 tasks_lock = threading.Lock()
 
@@ -155,7 +156,10 @@ def read_tasks():
             if m:
                 title = title[:m.start()]
                 times = [r.strip().split("-") for r in m.group(1).split(";")]
-            tasks.append({"title": title, "status": status, "prio": prio, "times": times})
+            p = PRIO_RE.search(title)
+            if p:
+                title = title[:p.start()]
+            tasks.append({"title": title, "status": status, "prio": p.group(1).capitalize() if p else prio, "times": times})
     return tasks
 
 
@@ -165,14 +169,17 @@ def write_tasks(tasks):
         for t in tasks:
             if t["status"] == status and (prio is None or t["prio"] == prio):
                 times = "; ".join(a + "-" + b for a, b in t["times"])
-                out.append("[%s] %s%s" % ("x" if status == "done" else " ", " ".join(t["title"].split()),
-                                          " (%s)" % times if times else ""))
+                out.append("[%s] %s%s%s" % ("x" if status == "done" else " ", " ".join(t["title"].split()),
+                                            "" if prio else " !" + t["prio"], " (%s)" % times if times else ""))
         return out
 
-    lines = ["# Backlog"]
-    for p in PRIOS:
-        lines += ["## " + p] + items("backlog", p) + [""]
-    lines += ["", "# In progress"] + items("progress") + ["", "# Done"] + items("done")
+    lines = []
+    for head, status in (("Backlog", "backlog"), ("In progress", "progress")):
+        lines += ["# " + head]
+        for p in PRIOS:
+            lines += ["## " + p] + items(status, p) + [""]
+        lines += [""]
+    lines += ["# Done"] + items("done")
     tmp = TASKS_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

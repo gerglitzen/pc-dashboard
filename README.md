@@ -6,7 +6,7 @@ It shows CPU (total, each core, clock, load), CPU temperature, fan speed, SSD te
 
 ## Tasks page
 
-Swipe left (or tap **Tasks** in the header) for a small task board: Backlog (High / Medium / Low), In progress, Done. Type in *Add a task* and press Enter to add one. Press and hold a ticket to drag it to another column, priority or position (with a mouse just drag it). The ▶ button on In progress tickets starts/stops their timer. Tap a ticket to move it, rename it, delete it, start/stop its timer or add a time range by hand. Only one timer runs at a time; starting one moves the ticket to In progress, moving a ticket out of In progress stops its timer.
+Swipe left (or tap **Tasks** in the header) for a small task board: Backlog and In progress (both grouped High / Medium / Low), Done. Type in *Add a task*, press Enter, then pick its priority (High / Medium / Low). Tickets have a colored stripe for their priority (red / yellow / gray). Press and hold a ticket to drag it to another column, priority or position (with a mouse just drag it). The ▶ button on In progress tickets starts/stops their timer. Tap a ticket to move it, change its priority (it stays in its column), rename it, delete it, start/stop its timer or add a time range by hand. Only one timer runs at a time; starting one moves the ticket to In progress, moving a ticket out of In progress stops its timer.
 
 Tasks are stored in a plain markdown file that you can also edit by hand:
 
@@ -18,11 +18,16 @@ Tasks are stored in a plain markdown file that you can also edit by hand:
 ## Low
 
 # In progress
+## High
 [ ] Working on this (13:05-)
+## Medium
+## Low
 
 # Done
-[x] Finished task (9:00-10:00; 10:50-11:00)
+[x] Finished task !Low (9:00-10:00; 10:50-11:00)
 ```
+
+Done tickets keep their priority as a `!High` / `!Medium` / `!Low` tag (no tag = Medium).
 
 The file is `tasks.md` next to `server.py` by default; set `TASKS_FILE=/path/to/tasks.md` to use another one (for the systemd service add `Environment=TASKS_FILE=...` under `[Service]`). If the file is changed on the PC while the iPad has the page open, the iPad reloads it instead of overwriting your edit.
 

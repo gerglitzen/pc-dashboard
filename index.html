@@ -112,10 +112,16 @@
   .add { width: 100%; margin: 6px 0 2px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--text-primary); background: transparent;
     border: 1px dashed var(--track); border-radius: 10px; outline: none; -webkit-appearance: none; transition: border-color .2s; }
   .add:focus { border-style: solid; border-color: var(--series-1); }
+  #add-prio { display: none; align-items: center; margin: 6px 0 2px; font-size: 14px; color: var(--text-secondary); }
+  #add-prio.show { display: flex; }
+  #add-prio .btn { flex: 1; margin-left: 6px; padding: 7px 0; border-left: 4px solid var(--pc); }
   .card { position: relative; margin-top: 8px; padding: 11px 12px; border-radius: 10px; background: var(--card); box-shadow: var(--shadow);
     font-size: 15px; line-height: 1.3; word-wrap: break-word; cursor: grab; -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; transition: transform .15s, box-shadow .2s; }
   .card:active { transform: scale(.98); }
+  .card.p-High { border-left: 4px solid var(--critical); }
+  .card.p-Medium { border-left: 4px solid var(--warning); }
+  .card.p-Low { border-left: 4px solid var(--text-muted); }
   .card.run { box-shadow: 0 0 0 1.5px var(--series-1), var(--shadow); }
   .card.has-play { padding-right: 52px; }
   .card .m { font-size: 13px; color: var(--text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -139,7 +145,8 @@
     box-shadow: 0 24px 60px rgba(0,0,0,.4); transform: translateY(24px) scale(.97); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
   #sheet.show .box { transform: none; }
   #sheet .label { margin: 18px 0 8px; }
-  #s-move .btn { margin: 0 6px 6px 0; }
+  #s-move .btn, #s-prio .btn { margin: 0 6px 6px 0; }
+  #s-prio .btn { border-left: 4px solid var(--pc); }
   #sheet input { font: inherit; font-size: 16px; color: var(--text-primary); background: var(--surface-0);
     border: 1px solid var(--track); border-radius: 8px; padding: 7px 8px; -webkit-appearance: none; }
   #sheet #s-title { width: 100%; margin-left: -9px; font-size: 21px; font-weight: 600; background: transparent; border-color: transparent; outline: none; }
@@ -218,9 +225,10 @@
 <section class="page" id="tasks">
   <div class="tile"><div class="col-head"><span>Backlog<span class="count" id="n-backlog"></span></span></div>
     <input class="add" id="add" type="text" placeholder="+ Add a task" autocomplete="off">
+    <div id="add-prio">Priority<button class="btn" type="button" data-p="High" style="--pc:var(--critical)">High</button><button class="btn" type="button" data-p="Medium" style="--pc:var(--warning)">Medium</button><button class="btn" type="button" data-p="Low" style="--pc:var(--text-muted)">Low</button></div>
     <div class="list" id="l-backlog"></div></div>
   <div class="tile"><div class="col-head"><span>In progress<span class="count" id="n-progress"></span></span><span class="tot" id="t-progress"></span></div>
-    <div class="list zone" id="l-progress" data-s="progress"></div></div>
+    <div class="list" id="l-progress"></div></div>
   <div class="tile"><div class="col-head"><span>Done<span class="count" id="n-done"></span></span><span class="tot" id="t-done"></span></div>
     <div class="list zone" id="l-done" data-s="done"></div></div>
 </section>
@@ -229,6 +237,8 @@
   <input id="s-title" type="text">
   <div class="label">Move to</div>
   <div id="s-move"></div>
+  <div class="label">Priority</div>
+  <div id="s-prio"></div>
   <div class="label"><span>Time</span><span id="s-total"></span></div>
   <ul id="s-times"></ul>
   <div class="timebar"><button class="btn" id="s-timer" type="button"></button></div>
@@ -438,8 +448,7 @@
   // times are 'H:MM'; an empty end means the timer is running
   var tasks = [], version = null, cur = null, busy = false;
   var PRIOS = ['High', 'Medium', 'Low'], PRIO_COLOR = { High: '--critical', Medium: '--warning', Low: '--text-muted' };
-  var MOVES = [['backlog', 'High', 'Backlog · High'], ['backlog', 'Medium', 'Medium'], ['backlog', 'Low', 'Low'],
-               ['progress', null, 'In progress'], ['done', null, 'Done']];
+  var MOVES = [['backlog', 'Backlog'], ['progress', 'In progress'], ['done', 'Done']];
   var ICON_PLAY = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.2v9.6l8-4.8z" fill="currentColor"/></svg>';
   var ICON_STOP = '<svg width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>';
   function pad(n) { return ('0' + n).slice(-2); }
@@ -499,7 +508,7 @@
 
   function card(t) {
     var i = tasks.indexOf(t), run = running(t), play = t.status === 'progress';
-    var h = '<div class="card' + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title);
+    var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title);
     if (t.times.length)
       h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(t)) + ' · ' +
            t.times.map(function (r) { return r[0] + '–' + (r[1] || 'now'); }).join(', ') + '</div>';
@@ -509,23 +518,35 @@
   function renderTasks() {
     if (drag) return;
     var h = { backlog: '', progress: '', done: '' }, n = { backlog: 0, progress: 0, done: 0 }, tot = { progress: 0, done: 0 };
-    PRIOS.forEach(function (p) {
-      h.backlog += '<div class="zone" data-s="backlog" data-p="' + p + '"><span class="prio status" style="--sc:var(' + PRIO_COLOR[p] + ')">' + p + '</span>';
-      tasks.forEach(function (t) { if (t.status === 'backlog' && t.prio === p) h.backlog += card(t); });
-      h.backlog += '</div>';
+    ['backlog', 'progress'].forEach(function (s) { // grouped by priority
+      PRIOS.forEach(function (p) {
+        h[s] += '<div class="zone" data-s="' + s + '" data-p="' + p + '"><span class="prio status" style="--sc:var(' + PRIO_COLOR[p] + ')">' + p + '</span>';
+        tasks.forEach(function (t) { if (t.status === s && t.prio === p) h[s] += card(t); });
+        h[s] += '</div>';
+      });
     });
     tasks.forEach(function (t) {
       n[t.status]++;
-      if (t.status !== 'backlog') { h[t.status] += card(t); tot[t.status] += spent(t); }
+      if (t.status === 'done') h.done += card(t);
+      if (t.status !== 'backlog') tot[t.status] += spent(t);
     });
     for (var k in h) { $('l-' + k).innerHTML = h[k]; $('n-' + k).textContent = n[k]; }
     $('t-progress').textContent = tot.progress ? fmtMin(tot.progress) : '';
     $('t-done').textContent = tot.done ? fmtMin(tot.done) : '';
   }
+  // Adding a task: Enter in the input, then pick its priority
+  var newTitle = null;
+  function askPrio(title) { newTitle = title; $('add-prio').className = title ? 'show' : ''; }
   $('add').onkeydown = function (e) {
+    if (e.keyCode === 27) askPrio(null);
     if (e.keyCode !== 13 || !this.value.trim()) return;
-    tasks.push({ title: this.value.trim(), status: 'backlog', prio: 'Medium', times: [] });
-    this.value = ''; save();
+    askPrio(this.value.trim()); this.blur();
+  };
+  $('add').oninput = function () { askPrio(null); };
+  $('add-prio').onclick = function (e) {
+    var p = e.target.getAttribute('data-p'); if (!p || !newTitle) return;
+    tasks.push({ title: newTitle, status: 'backlog', prio: p, times: [] });
+    $('add').value = ''; askPrio(null); save();
   };
 
   // ---- Drag & drop: long-press a card (touch) or drag it (mouse), drop it on any column / priority ----
@@ -638,10 +659,13 @@
     var t = cur, h = '';
     $('s-title').value = t.title;
     MOVES.forEach(function (m, i) {
-      var on = t.status === m[0] && (!m[1] || t.prio === m[1]);
-      h += '<button class="btn' + (on ? ' on' : '') + '" type="button" data-m="' + i + '">' + m[2] + '</button>';
+      h += '<button class="btn' + (t.status === m[0] ? ' on' : '') + '" type="button" data-m="' + i + '">' + m[1] + '</button>';
     });
     $('s-move').innerHTML = h; h = '';
+    PRIOS.forEach(function (p) {
+      h += '<button class="btn' + (t.prio === p ? ' on' : '') + '" type="button" data-p="' + p + '" style="--pc:var(' + PRIO_COLOR[p] + ')">' + p + '</button>';
+    });
+    $('s-prio').innerHTML = h; h = '';
     t.times.forEach(function (r, i) {
       h += '<li><span>' + r[0] + ' – ' + (r[1] || 'running') + '</span><button class="btn" type="button" data-r="' + i + '">×</button></li>';
     });
@@ -655,7 +679,11 @@
   }
   $('s-move').onclick = function (e) {
     var m = MOVES[e.target.getAttribute('data-m')]; if (!m) return;
-    moveTo(cur, m[0], m[1]); save();
+    moveTo(cur, m[0]); save();
+  };
+  $('s-prio').onclick = function (e) {
+    var p = e.target.getAttribute('data-p'); if (!p) return;
+    cur.prio = p; save();
   };
   $('s-times').onclick = function (e) {
     var i = e.target.getAttribute('data-r'); if (i == null) return;
