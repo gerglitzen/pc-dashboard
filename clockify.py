@@ -5,7 +5,7 @@ import os
 import threading
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import timezone
 
 BASE = "https://api.clockify.me/api/v1"
 _lock = threading.Lock()
@@ -85,12 +85,6 @@ def add_entry(project_id, task_id, description, start, end):
 def update_entry(entry_id, project_id, task_id, description, start, end):
     _call(f"/workspaces/{_workspace()}/time-entries/{entry_id}", "PUT",
           _entry(project_id, task_id, description, start, end))
-
-
-def entry_day(entry_id):
-    """Local date on which the entry ends."""
-    e = _call(f"/workspaces/{_workspace()}/time-entries/{entry_id}")
-    return datetime.fromisoformat(e["timeInterval"]["end"].replace("Z", "+00:00")).astimezone().date()
 
 
 def delete_entry(entry_id):

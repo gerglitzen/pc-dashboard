@@ -8,6 +8,8 @@ It shows CPU (total, each core, clock, load), CPU temperature, fan speed, SSD te
 
 Swipe left (or tap **Tasks** in the header) for a small task board: Backlog and In progress (both grouped High / Medium / Low), Done. Type in *Add a task*, press Enter, then pick its priority (High / Medium / Low). Tickets have a colored stripe for their priority (red / yellow / gray). Press and hold a ticket to drag it to another column, priority or position (with a mouse just drag it). The ▶ button on In progress tickets starts/stops their timer. Tap a ticket to move it, change its priority (it stays in its column), rename it, delete it, start/stop its timer or add a time range by hand. Only one timer runs at a time; starting one moves the ticket to In progress, moving a ticket out of In progress stops its timer.
 
+Every time range is dated (the day it started). The board shows only today's ranges and time (plus a running timer), so a ticket still In progress from an earlier day starts the day at 0. The ticket sheet shows today's ranges with today's and the total time; *Show all* lists every range grouped by day, where older ranges can be edited or deleted too. *Add time* adds a range for today.
+
 Tasks are stored in a plain markdown file that you can also edit by hand:
 
 ```
@@ -19,13 +21,15 @@ Tasks are stored in a plain markdown file that you can also edit by hand:
 
 # In progress
 ## High
-[ ] Working on this (13:05-)
+[ ] Working on this (2026-11-06 9:00-12:00; 2026-11-09 13:05-)
 ## Medium
 ## Low
 
 # Done
-[x] Finished task !Low (9:00-10:00; 10:50-11:00)
+[x] Finished task !Low (2026-11-09 9:00-10:00; 2026-11-09 10:50-11:00)
 ```
+
+A range written by hand without a date gets the day the file was last changed.
 
 Done tickets keep their priority as a `!High` / `!Medium` / `!Low` tag (no tag = Medium).
 
@@ -39,7 +43,7 @@ archive_retention_days: 30
 
 ## Clockify
 
-A ticket can be linked to a Clockify task: tap the ticket, pick the project and the task under **Clockify**. The list shows the open tasks of active projects that are assigned to you. Every time range you finish on a linked ticket (stopping its timer or *Add time*) is logged to Clockify as a time entry for today, with the ticket title as description. Logged ranges get a ✓ in the ticket; if logging fails, the error is shown and the server retries every minute.
+A ticket can be linked to a Clockify task: tap the ticket, pick the project and the task under **Clockify**. The list shows the open tasks of active projects that are assigned to you. Every time range you finish on a linked ticket (stopping its timer or *Add time*) is logged to Clockify as a time entry on that range's date, with the ticket title as description. Logged ranges get a ✓ in the ticket; if logging fails, the error is shown and the server retries every minute.
 
 Logged ranges stay in sync with Clockify:
 
@@ -48,14 +52,14 @@ Logged ranges stay in sync with Clockify:
 - Renaming the ticket or linking it to another task → its entries are updated.
 - Unlinking the ticket (*Not linked*) only stops logging new ranges; existing entries stay.
 - If Clockify can't be reached for an edit or delete, the change is not saved and the board shows why.
-- Ranges that were already on the ticket when you link it are logged too, dated today (you are asked first).
+- Ranges that were already on the ticket when you link it are logged too, on their own dates (you are asked first).
 
 Setup: copy `.env.sample` to `.env` next to `server.py` and fill in `CLOCKIFY_API_KEY` and `CLOCKIFY_USER_ID`, then restart the server. Without them the Clockify section is hidden. The project/task list is reloaded from Clockify each time you open a ticket.
 
 In `tasks.md` the link and the logged marks look like this:
 
 ```
-[ ] Planning {cf:<projectId>/<taskId>} (9:00-10:00✓<timeEntryId>; 10:50-)
+[ ] Planning {cf:<projectId>/<taskId>} (2026-11-09 9:00-10:00✓<timeEntryId>; 2026-11-09 10:50-)
 ```
 
 ## Requirements

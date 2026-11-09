@@ -153,6 +153,7 @@
   #sheet select { display: block; width: 100%; margin-bottom: 8px; font: inherit; font-size: 16px; color: var(--text-primary);
     background: var(--surface-0); border: 1px solid var(--track); border-radius: 8px; padding: 7px 8px; }
   #cf-err { color: var(--critical); margin: -2px 0 6px; }
+  #s-times li.day { padding-top: 12px; color: var(--text-secondary); font-size: 14px; }
   #s-times .lg { color: var(--text-muted); font-size: 13px; margin-left: 8px; }
   #sheet #s-title { width: 100%; margin-left: -9px; font-size: 21px; font-weight: 600; background: transparent; border-color: transparent; outline: none; }
   #sheet #s-title:focus { border-color: var(--track); }
@@ -251,7 +252,7 @@
     <select id="s-proj"></select><select id="s-task"></select><div class="sub" id="cf-err"></div></div>
   <div class="label"><span>Time</span><span id="s-total"></span></div>
   <ul id="s-times"></ul>
-  <div class="timebar"><button class="btn" id="s-timer" type="button"></button></div>
+  <div class="timebar"><button class="btn" id="s-timer" type="button"></button><button class="btn" id="s-all" type="button"></button></div>
   <div class="timebar"><input id="s-from" type="time"><span>–</span><input id="s-to" type="time"><button class="btn" id="s-addtime" type="button">Add time</button></div>
   <div class="row" style="margin-top:14px"><button class="btn" id="s-del" type="button" style="color:var(--critical)">Delete</button><button class="btn on" id="s-close" type="button">Done</button></div>
 </div></div>
@@ -455,11 +456,13 @@
 
   // ---- Tasks: stored by the server in a markdown file ----
   // task = {title, status: 'backlog'|'progress'|'done', prio: 'High'|'Medium'|'Low', clockify: 'projectId/taskId' or '',
-  //         times: [[start, end, entryId]]}
-  // times are 'H:MM'; an empty end means the timer is running; entryId = its Clockify time entry ('' = not logged; set by the server)
+  //         times: [[start, end, entryId, date]]}
+  // times are 'H:MM'; an empty end means the timer is running; entryId = its Clockify time entry ('' = not logged; set by the server);
+  // date = 'YYYY-MM-DD' the range started. The board shows only today's ranges (and a running one); the sheet can show all.
   var tasks = [], version = null, cur = null, busy = null, queued = false;
   var cf = null, cfTask = {}, cfErr = null, sheetProj = ''; // Clockify projects (null = off), taskId -> [project, task]
   var editIdx = null; // index of the time range being edited in place in the sheet
+  var showAll = false; // the sheet lists every range, not only today's
   var PRIOS = ['High', 'Medium', 'Low'], PRIO_COLOR = { High: '--critical', Medium: '--warning', Low: '--text-muted' };
   var MOVES = [['backlog', 'Backlog'], ['progress', 'In progress'], ['done', 'Done']];
   var ICON_PLAY = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 1.2v9.6l8-4.8z" fill="currentColor"/></svg>';
@@ -467,9 +470,13 @@
   function pad(n) { return ('0' + n).slice(-2); }
   function nowHM() { var n = new Date(); return n.getHours() + ':' + pad(n.getMinutes()); }
   function mins(hm) { var p = hm.split(':'); return +p[0] * 60 + +p[1]; }
-  function spent(t) {
+  function today() { var n = new Date(); return n.getFullYear() + '-' + pad(n.getMonth() + 1) + '-' + pad(n.getDate()); }
+  function isToday(r) { return r[3] === today() || !r[1]; }
+  function todays(t) { return t.times.filter(isToday); }
+  function byTime(a, b) { return a[3].localeCompare(b[3]) || mins(a[0]) - mins(b[0]); }
+  function spent(times) {
     var m = 0;
-    t.times.forEach(function (r) { var d = mins(r[1] || nowHM()) - mins(r[0]); m += d < 0 ? d + 1440 : d; });
+    times.forEach(function (r) { var d = mins(r[1] || nowHM()) - mins(r[0]); m += d < 0 ? d + 1440 : d; });
     return m;
   }
   function fmtMin(m) { return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; }
@@ -490,7 +497,7 @@
     else {
       tasks.forEach(function (o) { if (running(o)) stopTimer(o); }); // one timer at a time
       if (t.status !== 'progress') moveTo(t, 'progress');
-      t.times.push([nowHM(), '']);
+      t.times.push([nowHM(), '', '', today()]);
     }
     save();
   }
@@ -553,9 +560,10 @@
     var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title);
     var link = t.clockify && cfTask[t.clockify.split('/')[1]];
     if (link) h += '<div class="cfn">' + esc(link[1].name) + '</div>';
-    if (t.times.length)
-      h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(t)) + ' · ' +
-           t.times.map(function (r) { return r[0] + '–' + (r[1] || 'now'); }).join(', ') + '</div>';
+    var tt = todays(t);
+    if (tt.length)
+      h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(tt)) + ' · ' +
+           tt.map(function (r) { return r[0] + '–' + (r[1] || 'now'); }).join(', ') + '</div>';
     if (play) h += '<button class="play" type="button" data-play="' + i + '">' + (run ? ICON_STOP : ICON_PLAY) + '</button>';
     return h + '</div>';
   }
@@ -572,7 +580,7 @@
     tasks.forEach(function (t) {
       n[t.status]++;
       if (t.status === 'done') h.done += card(t);
-      if (t.status !== 'backlog') tot[t.status] += spent(t);
+      if (t.status !== 'backlog') tot[t.status] += spent(todays(t));
     });
     for (var k in h) { $('l-' + k).innerHTML = h[k]; $('n-' + k).textContent = n[k]; }
     $('t-progress').textContent = tot.progress ? fmtMin(tot.progress) : '';
@@ -697,7 +705,7 @@
   };
 
   // ---- Ticket sheet ----
-  function openSheet(t) { cur = t; editIdx = null; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; if (cf) loadClockify(true); }
+  function openSheet(t) { cur = t; editIdx = null; showAll = false; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; if (cf) loadClockify(true); }
   function closeSheet() { cur = null; $('sheet').className = ''; if (document.activeElement) document.activeElement.blur(); }
   function renderSheet() {
     var t = cur, h = '';
@@ -713,7 +721,14 @@
     var ef = $('e-from'), et = $('e-to'); // keep what is being typed across re-renders
     ef = ef ? ef.value : editIdx !== null && hhmm(t.times[editIdx][0]);
     et = et ? et.value : editIdx !== null && hhmm(t.times[editIdx][1]);
+    var day = null, tt = todays(t);
     t.times.forEach(function (r, i) {
+      if (!showAll && !isToday(r)) return;
+      if (showAll && r[3] !== day) {
+        day = r[3];
+        h += '<li class="day"><span>' + (day === today() ? 'Today' : day) + '</span><span>' +
+             fmtMin(spent(t.times.filter(function (q) { return q[3] === day; }))) + '</span></li>';
+      }
       var lg = r[2] ? '✓ Clockify' : t.clockify && r[1] ? 'not in Clockify yet' : '', del = '<button class="btn del" type="button" data-r="' + i + '">Del</button>';
       if (i === editIdx)
         h += '<li class="ed"><span><input id="e-from" type="time" value="' + ef + '"> – <input id="e-to" type="time" value="' + et +
@@ -724,10 +739,13 @@
     });
     $('s-times').innerHTML = h;
     if (cf) renderClockify(t);
-    $('s-total').textContent = t.times.length ? fmtMin(spent(t)) : '';
+    var all = spent(t.times), older = t.times.length - tt.length;
+    $('s-total').textContent = !t.times.length ? '' : showAll || !older ? 'Total ' + fmtMin(all) : 'Today ' + fmtMin(spent(tt)) + ' · Total ' + fmtMin(all);
+    $('s-all').textContent = showAll ? 'Show today' : 'Show all (' + older + ' earlier)';
+    $('s-all').style.display = older ? '' : 'none';
     $('s-timer').innerHTML = running(t) ? ICON_STOP + 'Stop timer' : ICON_PLAY + 'Start timer';
     $('s-timer').className = 'btn' + (running(t) ? ' on' : '');
-    var n = new Date(), last = t.times.length && t.times[t.times.length - 1][1];
+    var n = new Date(), last = tt.length && tt[tt.length - 1][1];
     $('s-to').value = pad(n.getHours()) + ':' + pad(n.getMinutes());
     $('s-from').value = last ? hhmm(last) : $('s-to').value;
   }
@@ -759,7 +777,7 @@
     var link = this.value ? sheetProj + '/' + this.value : '';
     var old = cur.times.filter(function (r) { return r[1] && !r[2]; }).length;
     if (link && !cur.clockify && old &&
-        !confirm('This ticket already has ' + old + ' time range(s) that are not in Clockify. Linking logs them too, dated today. Link it?'))
+        !confirm('This ticket already has ' + old + ' time range(s) that are not in Clockify. Linking logs them too, on their own dates. Link it?'))
       return renderSheet();
     cur.clockify = link; save();
   };
@@ -778,16 +796,17 @@
     else if (a('data-ok') != null) {
       var f = $('e-from').value, to = $('e-to').value; if (!f || !to) return;
       var r = cur.times[editIdx]; r[0] = hm(f); r[1] = hm(to); editIdx = null; // r keeps its Clockify entry
-      cur.times.sort(function (x, y) { return mins(x[0]) - mins(y[0]); });
+      cur.times.sort(byTime);
       save();
     } else if (a('data-r') != null) { editIdx = null; cur.times.splice(+a('data-r'), 1); save(); }
   };
   $('s-timer').onclick = function () { toggleTimer(cur); };
+  $('s-all').onclick = function () { showAll = !showAll; editIdx = null; renderSheet(); };
   $('s-addtime').onclick = function () {
     var f = $('s-from').value, to = $('s-to').value;
     if (!f || !to) return;
-    cur.times.push([hm(f), hm(to), '']);
-    cur.times.sort(function (a, b) { return mins(a[0]) - mins(b[0]); });
+    cur.times.push([hm(f), hm(to), '', today()]);
+    cur.times.sort(byTime);
     save();
   };
   $('s-title').onchange = function () { if (this.value.trim()) { cur.title = this.value.trim(); save(); } };
