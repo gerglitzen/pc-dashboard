@@ -133,9 +133,7 @@
   .card.run .play { background: var(--series-1); color: #fff; }
   .play svg, #s-timer svg { display: block; margin: auto; }
   .pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--series-1); margin-right: 6px;
-    vertical-align: 1px; -webkit-animation: pulse 1.6s infinite; animation: pulse 1.6s infinite; }
-  @-webkit-keyframes pulse { 50% { opacity: .25; } }
-  @keyframes pulse { 50% { opacity: .25; } }
+    vertical-align: 1px; }
   .ph { margin-top: 8px; border-radius: 10px; border: 2px dashed var(--series-1); background: var(--accent-soft); }
   .ghost { position: fixed; z-index: 20; margin: 0; pointer-events: none; opacity: .96; transition: none;
     transform: rotate(2deg) scale(1.04); box-shadow: 0 14px 32px rgba(0,0,0,.35); }
@@ -426,6 +424,7 @@
     page = p; track.className = ''; document.body.className = ''; place(null);
     tabBtns[0].className = p ? '' : 'on'; tabBtns[1].className = p ? 'on' : '';
     if (p) loadTasks();
+    stream(!p); // stats are only needed on the System page
   }
   tabBtns[0].onclick = function () { show(0); }; tabBtns[1].onclick = function () { show(1); };
   var sw = null;
@@ -512,21 +511,21 @@
     x.open(method, 'tasks');
     busy = method;
     x.onload = function () {
-      busy = null;
-      var r = JSON.parse(x.responseText);
+      busy = null; tasksOk = true;
+      var r = JSON.parse(x.responseText), first = version === null;
       version = r.version;
       if (method === 'GET' || x.status === 409 || x.status === 502) {
         if (x.status !== 200) { queued = false; closeSheet(); }
         if (x.status === 409) toast('Task file changed on the PC — reloaded, please redo your last change');
         if (x.status === 502) toast(r.error);
-        tasks = r.tasks; renderTasks();
+        if (first || JSON.stringify(r.tasks) !== JSON.stringify(tasks)) { tasks = r.tasks; renderTasks(); } // skip a no-change reload
       } else markLogged(r.tasks);
       if (r.clockify_error && r.clockify_error !== cfErr) toast('Clockify: ' + r.clockify_error);
       cfErr = r.clockify_error;
       if (cur) renderSheet();
       if (queued) { queued = false; save(); }
     };
-    x.onerror = function () { busy = null; queued = false; toast('Could not reach the PC — change not saved'); };
+    x.onerror = function () { busy = null; tasksOk = false; queued = false; toast('Could not reach the PC — change not saved'); };
     x.send(body ? JSON.stringify(body) : null);
   }
   function loadTasks() { if (!busy && !cur && !drag && document.activeElement !== $('add')) req('GET'); }
@@ -818,14 +817,23 @@
 
   req('GET'); // load now so the board is ready when swiping over
   loadClockify();
-  var last = 0, lastMin = -1, tick = 0;
-  var es = new EventSource('stream');
-  es.onmessage = function (e) { last = Date.now(); render(JSON.parse(e.data)); };
+  var last = 0, lastMin = -1, tick = 0, es = null, tasksOk = true;
+  function stream(on) { // the 1 Hz stats stream keeps the iPad's Wi-Fi awake, so it is closed on the Tasks page
+    if (on && !es) {
+      for (var k in hist) hist[k].length = 0; // restart the charts instead of joining across the gap
+      es = new EventSource('stream');
+      es.onmessage = function (e) { last = Date.now(); render(JSON.parse(e.data)); };
+    } else if (!on && es) { es.close(); es = null; }
+  }
+  stream(true);
   setInterval(function () {
     var n = new Date();
-    $('clock').textContent = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
-    $('conn').className = 'dot' + (Date.now() - last < 3000 ? ' on' : '');
-    if (n.getMinutes() !== lastMin) { lastMin = n.getMinutes(); if (tasks.some(running)) { renderTasks(); if (cur) renderSheet(); } }
+    $('conn').className = 'dot' + ((page ? tasksOk : Date.now() - last < 3000) ? ' on' : '');
+    if (n.getMinutes() !== lastMin) {
+      lastMin = n.getMinutes();
+      $('clock').textContent = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
+      if (tasks.some(running)) { renderTasks(); if (cur) renderSheet(); }
+    }
     if (page === 1 && ++tick % 10 === 0) loadTasks(); // pick up edits made to the file on the PC
   }, 1000);
 })();
