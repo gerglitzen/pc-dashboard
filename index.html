@@ -733,7 +733,7 @@
         h += '<li class="ed"><span><input id="e-from" type="time" value="' + ef + '"> – <input id="e-to" type="time" value="' + et +
              '"></span><span><button class="btn on" type="button" data-ok="1">Confirm</button>' + del + '</span></li>';
       else // a finished range is edited by tapping it
-        h += '<li><span><span class="rg"' + (r[1] ? ' data-ed="' + i + '" title="Tap to edit"' : '') + '>' + r[0] + ' – ' + (r[1] || 'running') +
+        h += '<li><span><span class="rg"' + (r[1] ? ' data-ed="' + i + '" title="Tap to edit"' : '') + '>' + r[0] + ' – ' + (r[1] ? '<span data-end>' + r[1] + '</span>' : 'running') +
              '</span>' + (lg ? '<span class="lg">' + lg + '</span>' : '') + '</span><span>' + del + '</span></li>';
     });
     $('s-times').innerHTML = h;
@@ -791,7 +791,8 @@
   function hm(v) { return v.replace(/^0(\d)/, '$1'); } // '09:05' -> '9:05'
   $('s-times').onclick = function (e) { // tap a range to edit it in place, Confirm saves it, Del deletes it
     var a = e.target.getAttribute.bind(e.target);
-    if (a('data-ed') != null) { editIdx = +a('data-ed'); $('s-times').innerHTML = ''; renderSheet(); $('e-from').focus(); }
+    var ed = e.target.closest('[data-ed]');
+    if (ed) { editIdx = +ed.getAttribute('data-ed'); $('s-times').innerHTML = ''; renderSheet(); $(a('data-end') != null ? 'e-to' : 'e-from').focus(); }
     else if (a('data-ok') != null) {
       var f = $('e-from').value, to = $('e-to').value; if (!f || !to) return;
       var r = cur.times[editIdx]; r[0] = hm(f); r[1] = hm(to); editIdx = null; // r keeps its Clockify entry
