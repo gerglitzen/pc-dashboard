@@ -115,6 +115,10 @@
   #add-prio { display: none; align-items: center; margin: 6px 0 2px; font-size: 14px; color: var(--text-secondary); }
   #add-prio.show { display: flex; }
   #add-prio .btn { flex: 1; margin-left: 6px; padding: 7px 0; border-left: 4px solid var(--pc); }
+  #add-notion { display: none; margin: 6px 0 2px; }
+  #add-notion.show { display: block; }
+  #add-notion select { display: block; width: 100%; margin-top: 6px; font: inherit; font-size: 15px; color: var(--text-primary);
+    background: var(--surface-0); border: 1px solid var(--track); border-radius: 8px; padding: 6px 8px; }
   .card { position: relative; margin-top: 8px; padding: 11px 12px; border-radius: 10px; background: var(--card); box-shadow: var(--shadow);
     font-size: 15px; line-height: 1.3; word-wrap: break-word; cursor: grab; -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; transition: transform .15s, box-shadow .2s; }
@@ -241,6 +245,7 @@
   <div class="tile"><div class="col-head"><span>Backlog<span class="count" id="n-backlog"></span></span></div>
     <input class="add" id="add" type="text" placeholder="+ Add a task" autocomplete="off">
     <div id="add-prio">Priority<button class="btn" type="button" data-p="High" style="--pc:var(--critical)">High</button><button class="btn" type="button" data-p="Medium" style="--pc:var(--warning)">Medium</button><button class="btn" type="button" data-p="Low" style="--pc:var(--text-muted)">Low</button></div>
+    <div id="add-notion"><select id="an-proj"></select><select id="an-task"></select></div>
     <div class="list" id="l-backlog"></div></div>
   <div class="tile"><div class="col-head"><span>In progress<span class="count" id="n-progress"></span></span><span class="tot" id="t-progress"></span></div>
     <div class="list" id="l-progress"></div></div>
@@ -663,9 +668,51 @@
     $('t-progress').textContent = tot.progress ? fmtMin(tot.progress) : '';
     $('t-done').textContent = tot.done ? fmtMin(tot.done) : '';
   }
-  // Adding a task: Enter in the input, then pick its priority
-  var newTitle = null;
-  function askPrio(title) { newTitle = title; $('add-prio').className = title ? 'show' : ''; }
+  // Adding a task: Enter in the input, then pick its priority, or the Notion ticket it is for (its priority comes from Notion)
+  var newTitle = null, picks = null; // my Notion tickets that can be added (cached by the server, reloaded by Sync)
+  function askPrio(title) {
+    newTitle = title; $('add-prio').className = title ? 'show' : '';
+    $('add-notion').className = title && notionOn ? 'show' : '';
+    if (title && notionOn) { picks = null; renderPicks(''); loadPicks(); }
+  }
+  function loadPicks() {
+    var x = new XMLHttpRequest();
+    x.open('GET', 'notion/tickets');
+    x.onload = function () {
+      var r = JSON.parse(x.responseText);
+      if (x.status !== 200) return toast('Notion: ' + r.error);
+      picks = r.tickets; renderPicks('');
+    };
+    x.send();
+  }
+  function renderPicks(proj) { // project, then its tickets that aren't on the board yet, named like their Clockify task
+    var on = {}, projs = [];
+    tasks.forEach(function (t) { if (t.notion) on[t.notion] = 1; });
+    var free = (picks || []).filter(function (n) { return !on[n.gen]; });
+    free.forEach(function (n) { if (projs.indexOf(n.project) < 0) projs.push(n.project); });
+    var h = '<option value="">' + (picks ? '— or a Notion ticket: project —' : 'Loading Notion tickets…') + '</option>';
+    projs.sort().forEach(function (p) { h += '<option value="' + esc(p) + '"' + (p === proj ? ' selected' : '') + '>' + esc(p) + '</option>'; });
+    $('an-proj').innerHTML = h; h = '<option value="">' + (proj ? '— Pick a ticket —' : '') + '</option>';
+    free.filter(function (n) { return n.project === proj; }).sort(function (a, b) { return a.label.localeCompare(b.label); }).forEach(function (n) {
+      h += '<option value="' + esc(n.gen) + '">' + esc(n.gen + ':' + n.label + ' · ' + n.status + (n.role === 'reviewer' ? ' · Review' : '')) + '</option>';
+    });
+    $('an-task').innerHTML = h; $('an-task').disabled = !proj;
+  }
+  $('an-proj').onchange = function () { renderPicks(this.value); };
+  $('an-task').onchange = function () {
+    var gen = this.value; if (!gen || !newTitle) return;
+    this.disabled = true;
+    var x = new XMLHttpRequest();
+    x.open('POST', 'notion/add');
+    x.onload = function () {
+      var r = JSON.parse(x.responseText);
+      if (x.status !== 200) { $('an-task').disabled = false; return toast('Notion: ' + r.error); }
+      $('add').value = ''; askPrio(null);
+      version = r.version; tasks = r.tasks; renderTasks();
+    };
+    x.onerror = function () { $('an-task').disabled = false; toast('Could not reach the PC — not added'); };
+    x.send(JSON.stringify({ title: newTitle, notion: gen }));
+  };
   $('add').onkeydown = function (e) {
     if (e.keyCode === 27) askPrio(null);
     if (e.keyCode !== 13 || !this.value.trim()) return;

@@ -4,9 +4,11 @@ import json
 import os
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 BASE = "https://api.notion.com/v1"
 TASKS = "7c3bce6e-e4e2-46aa-92f7-c0ca33139f7e"  # data source of the General-Task database
+_titles = {}  # page id -> title of projects and milestones, reloaded by pickable()
 
 
 class NotionError(Exception):
@@ -46,7 +48,7 @@ def _query(filter):
 
 def _task(page):
     """{id, gen: "GEN-<n>", title, status, prio, role: "assignee" | "reviewer" | "" (my role on it),
-    reviewed: it has a reviewer, weekly: is_weekly is ticked}"""
+    reviewed: it has a reviewer, weekly: is_weekly is ticked, project / parent: page id or ""}"""
     p = page["properties"]
     uid = p["Task ID"]["unique_id"]
     me = os.environ["NOTION_USER_ID"]
@@ -56,7 +58,9 @@ def _task(page):
             "status": (p["Status"]["status"] or {}).get("name", ""),
             "prio": (p["Priority"]["select"] or {}).get("name", ""),
             "role": "assignee" if any(u["id"] == me for u in p["Assignee"]["people"]) else "reviewer" if me in reviewers else "",
-            "reviewed": bool(reviewers), "weekly": bool(p.get("is_weekly", {}).get("checkbox"))}
+            "reviewed": bool(reviewers), "weekly": bool(p.get("is_weekly", {}).get("checkbox")),
+            "project": next((r["id"] for r in p["Project"]["relation"]), ""),
+            "parent": next((r["id"] for r in p["Parent-task"]["relation"]), "")}
 
 
 def my_tasks(day):
@@ -81,3 +85,28 @@ def get_task(gen):
 
 def set_status(page_id, status):
     _call(f"/pages/{page_id}", "PATCH", {"properties": {"Status": {"status": {"name": status}}}})
+
+
+def _title(page_id):
+    if page_id not in _titles:
+        props = _call(f"/pages/{page_id}")["properties"].values()
+        _titles[page_id] = "".join(x["plain_text"] for p in props if p["type"] == "title" for x in p["title"]).strip()
+    return _titles[page_id]
+
+
+def pickable():
+    """Reloads the project and milestone names too. My tickets to add to the board by hand: assigned to me and not Blocked / Done / Archived, or In review where I am
+    the reviewer. Each gets project: the project's name and label: "<milestone> - <task>" (only the task without one)."""
+    me = os.environ["NOTION_USER_ID"]
+    tasks = [_task(p) for p in _query({"or": [
+        {"and": [{"property": "Assignee", "people": {"contains": me}}] +
+                [{"property": "Status", "status": {"does_not_equal": s}} for s in ("Blocked", "Done", "Archived")]},
+        {"and": [{"property": "Reviewer", "people": {"contains": me}},
+                 {"property": "Status", "status": {"equals": "In review"}}]}]})]
+    _titles.clear()
+    with ThreadPoolExecutor(4) as pool:  # names of the projects and milestones
+        list(pool.map(_title, {i for t in tasks for i in (t["project"], t["parent"]) if i}))
+    for t in tasks:
+        t["project"] = _title(t["project"]) if t["project"] else "(no project)"
+        t["label"] = (_title(t["parent"]) + " - " if t["parent"] else "") + t["title"]
+    return tasks

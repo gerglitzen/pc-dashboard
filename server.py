@@ -50,6 +50,7 @@ tasks_lock = threading.Lock()
 clockify_error = None  # last Clockify logging error, shown on the board
 notion_error = None  # last Notion sync error, shown on the board
 sync_lock = threading.Lock()  # one Notion sync at a time (it may wait a minute for Clockify tasks)
+picks = None  # my Notion tickets to add by hand (notion.pickable), loaded at start and by every sync
 
 cond = threading.Condition()
 latest = "{}"
@@ -385,6 +386,8 @@ def notion_sync():
         for t in tasks:
             if not t["notion"] and t["clockify"] in gens:  # linked to the Clockify task of a Notion ticket by hand
                 t["notion"] = gens[t["clockify"]]
+            if t["notion"] and not t["clockify"] and t["notion"] in links:  # its Clockify task wasn't there when added
+                t["clockify"] = links[t["notion"]][0]
             n = by_gen.get(t["notion"])
             t["role"] = n["role"] if n else roles.get(t["notion"], t["role"])
             if n and n["role"] == "assignee" and n["status"] == "In progress" and t["status"] == "done":
@@ -425,6 +428,34 @@ def wait_for_clockify(left):
             n["gen"] for n in left)
 
 
+def link_when_ready(gen):
+    """Link the board ticket of Notion ticket gen to its Clockify task once that appears (checked every 10 s, 6 times)."""
+    global notion_error
+    for _ in range(6):
+        time.sleep(10)
+        try:
+            link = clockify_links().get(gen)
+        except clockify.ClockifyError:
+            continue
+        if link:
+            with tasks_lock:
+                tasks = read_tasks()
+                for t in tasks:
+                    if t["notion"] == gen and not t["clockify"]:
+                        t["clockify"] = link[0]
+                write_tasks(tasks)
+            return
+    notion_error = "no Clockify task after a minute for %s; it is linked at the next sync." % gen
+
+
+def load_picks():
+    global picks, notion_error
+    try:
+        picks = notion.pickable()
+    except notion.NotionError as e:
+        notion_error = "loading the tickets to add: %s" % e
+
+
 def run_sync():
     """Sync under sync_lock (already acquired), waiting for missing Clockify tasks; returns (added, waiting gens).
     The lock is released when the waiting is over. Raises like notion_sync."""
@@ -438,6 +469,7 @@ def run_sync():
 
     def wait():
         try:
+            load_picks()
             wait_for_clockify(left)
         finally:
             sync_lock.release()
@@ -453,6 +485,8 @@ def archiver():
             if clockify.enabled():
                 retry_logging()
             archive_done()  # before the Notion sync, which changes the file's day
+        if notion.enabled() and picks is None and read_state().get("notion_day") == date.today().isoformat():
+            load_picks()  # started later in the day: the daily sync (which loads them) already ran
         if notion.enabled() and read_state().get("notion_day") != date.today().isoformat() \
                 and sync_lock.acquire(blocking=False):
             try:
@@ -517,7 +551,10 @@ class Handler(BaseHTTPRequestHandler):
           I'm the reviewer: back to Backlog = In progress when it was In review). For done nothing changes, the reply has
           the suggested status: is_weekly = "" (leave it), with a reviewer = In review, else Done; I'm the reviewer: Done.
           Replies {role, status: its Notion status now, changed, suggest}.
-        /notion/status {notion, status: Done | In review}: set it."""
+        /notion/status {notion, status: Done | In review}: set it.
+        /notion/add {title, notion}: add a ticket by hand for that Notion ticket, with its priority, into In progress if
+          I'm assigned and it is In progress, else Backlog; a Backlog one I'm assigned to is set to Not started. Linked to
+          its Clockify task, or once that appears. Replies the task state."""
         if not notion.enabled():
             return self.send_json(400, {"error": "Notion is not set up"})
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
@@ -543,6 +580,25 @@ class Handler(BaseHTTPRequestHandler):
                     "" if n["weekly"] else "In review" if n["reviewed"] else "Done"
                 return self.send_json(200, {"role": n["role"], "status": status or n["status"], "changed": bool(status),
                                             "suggest": suggest})
+            if self.path == "/notion/add" and str(body.get("title") or "").strip():
+                n = notion.get_task(gen)
+                if any(t["notion"] == gen for t in read_tasks()):
+                    return self.send_json(409, {"error": "%s is already on the board" % gen})
+                if n["role"] == "assignee" and n["status"] == "Backlog":
+                    notion.set_status(n["id"], "Not started")
+                try:
+                    link = clockify_links().get(gen, ("", ""))[0] if clockify.enabled() else ""
+                except clockify.ClockifyError:
+                    link = ""  # linked by link_when_ready
+                with tasks_lock:
+                    tasks = read_tasks()
+                    tasks.append({"title": " ".join(body["title"].split()), "prio": n["prio"] if n["prio"] in PRIOS else "Medium",
+                                  "status": "progress" if n["role"] == "assignee" and n["status"] == "In progress" else "backlog",
+                                  "clockify": link, "notion": gen, "role": n["role"], "times": []})
+                    write_tasks(tasks)
+                if clockify.enabled() and not link:
+                    threading.Thread(target=link_when_ready, args=(gen,), daemon=True).start()
+                return self.send_json(200, tasks_state())
             if self.path == "/notion/status" and body.get("status") in ("Done", "In review"):
                 n = notion.get_task(gen)
                 if n["status"] != body["status"]:
@@ -569,6 +625,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
         elif self.path == "/tasks":
             self.send_json(200, tasks_state())
+        elif self.path == "/notion/tickets":
+            if not notion.enabled():
+                return self.send_json(400, {"error": "Notion is not set up"})
+            if picks is None:
+                load_picks()
+            self.send_json(200 if picks is not None else 502, {"tickets": picks or [], "error": notion_error})
         elif self.path.split("?")[0] == "/clockify":
             if not clockify.enabled():
                 return self.send_json(200, {"enabled": False, "projects": []})

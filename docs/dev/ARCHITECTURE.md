@@ -20,7 +20,7 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 |---|---|
 | `server.py` | HTTP server, stats sampler, task storage, archive, Clockify logging, Notion sync |
 | `clockify.py` | Clockify: my open tasks per project (cached; `refresh=True` reloads), create / update / delete time entries |
-| `notion.py` | Notion: my tickets for the board (`my_tasks`), one ticket by Task ID (`get_task`), `set_status` |
+| `notion.py` | Notion: my tickets for the board (`my_tasks`), my tickets to add by hand with project and milestone names (`pickable`), one ticket by Task ID (`get_task`), `set_status` |
 | `index.html` | both pages, the board, drag & drop, the ticket sheet, the Done dialog |
 | `config.yaml` | `archive_retention_days` |
 | `.env` | API keys (not committed; `.env.sample` is the template) |
@@ -34,7 +34,8 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | `sampler` | every second: reads system stats into `latest` and wakes the `/stream` clients |
 | `archiver` | every minute: retries failed Clockify logging, archives yesterday's Done tickets, starts the daily Notion sync when `notion_day` isn't today, prunes old archive files |
 | request threads | one per HTTP request |
-| sync waiter | after a Notion sync: polls Clockify for tickets still missing their Clockify task (10 s × 6), then releases `sync_lock` |
+| link waiter | after adding a Notion ticket by hand without its Clockify task: polls Clockify (10 s × 6) and links it |
+| sync waiter | after a Notion sync: reloads the pick list (`load_picks`), then polls Clockify for tickets still missing their Clockify task (10 s × 6), then releases `sync_lock` |
 
 `tasks_lock` serialises every read-modify-write of `tasks.json`. `sync_lock` allows one Notion sync at a time (the daily one and the button); it is held until the waiter is done.
 
@@ -47,6 +48,8 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | `GET /tasks` | | `{version, tasks, clockify_error, notion, notion_error}` |
 | `PUT /tasks` | `{version, tasks}` | the saved state; **409** + current state if `version` is stale; **502** if a Clockify edit/delete failed (nothing saved) |
 | `GET /clockify[?refresh]` | | `{enabled, projects: [{id, name, client, tasks: [{id, name, billable}]}]}` |
+| `GET /notion/tickets` | | `{tickets: [{gen, label, project, status, role, …}], error}` — the cached pick list |
+| `POST /notion/add` | `{title, notion}` | the task state; **409** if that Notion ticket is already on the board |
 | `POST /notion/sync` | | `{added, waiting: [GEN ids]}`; **409** while a sync runs |
 | `POST /notion/move` | `{notion, to: backlog\|progress\|done}` | `{role, status, changed, suggest}` |
 | `POST /notion/status` | `{notion, status: Done\|In review}` | `{status, changed}` |
@@ -88,6 +91,8 @@ On `PUT /tasks` the server compares the new list with the saved one: removed log
 3. Board tickets that aren't in the result and don't know my role yet (e.g. no due date) get it from `get_task`, one call each.
 4. Under `tasks_lock`: board tickets linked to a `GEN-…` Clockify task get `notion`; tickets get `role`; an assigned ticket in Done that is In progress in Notion moves back to In progress. `notion_day` is written.
 5. New tickets (not on the board): assigned + Backlog → `set_status(Not started)`. Each is added (`add_tickets`) if its Clockify task exists, else it waits: Clockify is polled every 10 s, 6 times, then `notion_error` lists the ones still missing.
+
+**Adding by hand** (`POST /notion/add`). The pick list (`picks`, from `notion.pickable`: assigned and not Blocked / Done / Archived, or In review where I review, plus project and milestone names) is loaded by every sync and at start, so the picker opens without Notion calls. The added ticket keeps the typed title, gets the Notion priority, goes to In progress if assigned + In progress, else Backlog; assigned + Backlog → `set_status(Not started)`. Without its Clockify task yet, `link_when_ready` links it within a minute; any sync also links board tickets that have `notion` but no `clockify`.
 
 **Board moves.** The browser calls `POST /notion/move` on every column change of a ticket with `notion`. The server fetches the ticket (`get_task`: status, my role, has a reviewer, `is_weekly`) and applies:
 

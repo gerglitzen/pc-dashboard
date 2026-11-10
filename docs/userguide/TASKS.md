@@ -4,7 +4,7 @@ A small task board with three columns: **Backlog** and **In progress** (both gro
 
 ## The board
 
-- **Add a ticket:** type in *+ Add a task*, press Enter, pick its priority. It goes to Backlog.
+- **Add a ticket:** type in *+ Add a task*, press Enter, pick its priority. It goes to Backlog. To add it for one of your Notion tickets instead, pick the project and the ticket below the priority, see [Adding a Notion ticket by hand](#adding-a-notion-ticket-by-hand).
 - **Priority** is the colored stripe: red High, yellow Medium, gray Low.
 - **Move a ticket:** press and hold it, then drag it to another column, priority or position (with a mouse just drag it). Or tap it and use *Move to*.
 - **Tap a ticket** to open its sheet: move it, change its priority (it stays in its column), rename it, delete it, start/stop its timer, add or edit time ranges, link it to Clockify.
@@ -57,6 +57,16 @@ Once a day (the first minute after midnight the server runs, or when it starts),
 A ticket is only added together with its Clockify task. If it is missing, the board checks Clockify every 10 seconds for a minute; if it still isn't there, an error names the ticket — tap ⟳ Notion later to try again.
 
 **Sent back by the reviewer:** a ticket you are assigned to that sits in Done on your board but is *In progress* in Notion again moves back to **In progress** at the next sync.
+
+### Adding a Notion ticket by hand
+
+For tickets the daily sync doesn't bring (e.g. no due date yet): type a name in *+ Add a task*, press Enter, then pick the **project** and the **ticket** in the two lists under the priority buttons.
+
+- The name you typed is the ticket's title, so it is also the description of its Clockify time entries.
+- The list shows your tickets that aren't on the board yet: assigned to you and *Backlog*, *Not started*, *In progress* or *In review*; and *In review* where you are the reviewer. They are named like their Clockify task (`GEN-4544:<milestone> - <task>`), with their Notion status.
+- The ticket gets its priority from Notion (Medium if not set) and goes to **In progress** if it is assigned to you and In progress in Notion, otherwise to **Backlog**.
+- A *Backlog* ticket assigned to you is set to **Not started** in Notion, and the board ticket is linked to its Clockify task once that appears (within a minute; otherwise at the next sync). Until then the card shows the Task ID.
+- The list is loaded by the daily sync (or when the server starts) and reloaded by **⟳ Notion**, so a ticket created in Notion during the day shows up after a Sync.
 
 ### Moving tickets
 
