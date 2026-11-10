@@ -1,138 +1,69 @@
 # PC Dashboard
 
-A live system monitor for this PC that you open in a web browser on another device on the same network (e.g. an old iPad), so that device works as a wireless status screen.
+A live system monitor for this PC that you open in a browser on another device on the same network (e.g. an old iPad), plus a small task board that logs time to Clockify and follows your Notion tickets.
 
-It shows CPU (total, each core, clock, load), CPU temperature, fan speed, SSD temperature, RAM and swap, network download/upload, GPU (NVIDIA), disk read/write and space used, battery, and uptime. Values update every second and the charts cover the last 2 minutes. Tap the CPU or Memory tile to see the top 5 processes (processes with the same name are added together, e.g. all `chrome` processes).
+- **System** page: CPU, temperatures, fans, RAM, network, GPU, disk, battery — updated every second.
+- **Tasks** page: Backlog / In progress / Done board with timers; linked to Clockify (time entries) and Notion (tickets, statuses).
 
-## Tasks page
+## Which document to read
 
-Swipe left (or tap **Tasks** in the header) for a small task board: Backlog and In progress (both grouped High / Medium / Low), Done. Type in *Add a task*, press Enter, then pick its priority (High / Medium / Low). Tickets have a colored stripe for their priority (red / yellow / gray). Press and hold a ticket to drag it to another column, priority or position (with a mouse just drag it). The ▶ button on In progress tickets starts/stops their timer. Tap a ticket to move it, change its priority (it stays in its column), rename it, delete it, start/stop its timer or add a time range by hand. Only one timer runs at a time; starting one moves the ticket to In progress, moving a ticket out of In progress stops its timer.
+| You want to… | Read |
+|---|---|
+| Install and start it | this README (below) |
+| Use the app | [User guide](docs/userguide/USER_GUIDE.md) → [System page](docs/userguide/SYSTEM.md), [Tasks page](docs/userguide/TASKS.md) |
+| Understand how it works | [Architecture](docs/dev/ARCHITECTURE.md) |
+| Change the code | [Development](docs/dev/DEVELOPMENT.md) |
 
-Every time range is dated (the day it started). The board shows only today's ranges and time (plus a running timer), so a ticket still In progress from an earlier day starts the day at 0. The ticket sheet shows today's ranges with today's and the total time; *Show all* lists every range grouped by day, where older ranges can be edited or deleted too. *Add time* adds a range for today.
+## Setup
 
-Tasks are stored in a plain markdown file that you can also edit by hand:
+Requirements: Linux with [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`). Optional: `nvidia-smi` for GPU stats.
 
-```
-# Backlog
-## High
-[ ] Some task
-## Medium
-## Low
+1. **Configure** (optional — without it the board works on its own):
 
-# In progress
-## High
-[ ] Working on this (2026-11-06 9:00-12:00; 2026-11-09 13:05-)
-## Medium
-## Low
+   ```bash
+   cp .env.sample .env    # then fill in the values
+   ```
 
-# Done
-[x] Finished task !Low (2026-11-09 9:00-10:00; 2026-11-09 10:50-11:00)
-```
+   | Variable | What | Without it |
+   |---|---|---|
+   | `CLOCKIFY_API_KEY`, `CLOCKIFY_USER_ID` | Clockify → Profile settings → API; your user id is the `id` of `GET https://api.clockify.me/api/v1/user` | no Clockify section, no time entries |
+   | `NOTION_API_KEY`, `NOTION_USER_ID` | a Notion integration token with access to the Tasks database; your Notion user id | no Notion sync |
 
-A range written by hand without a date gets the day the file was last changed.
+   `config.yaml` sets how long archived Done tasks are kept (`archive_retention_days`, default 30).
 
-Done tickets keep their priority as a `!High` / `!Medium` / `!Low` tag (no tag = Medium).
+2. **Run:**
 
-The file is `tasks.md` next to `server.py` by default; set `TASKS_FILE=/path/to/tasks.md` to use another one (for the systemd service add `Environment=TASKS_FILE=...` under `[Service]`). If the file is changed on the PC while the iPad has the page open, the iPad reloads it instead of overwriting your edit.
+   ```bash
+   uv run server.py            # port 8765; PORT=9000 uv run server.py for another one
+   ```
 
-On a new day, Done tasks are moved out of `tasks.md` into `archive/YYYY-MM-DD.jsonl` (next to the task file, one JSON object per line: `{"date", "title", "times"}`), so the board starts each day with an empty Done column. The date is the day the task file was last changed. Archive files older than 30 days are deleted; change this in `config.yaml`:
+   Open `http://<pc-ip>:8765` on the iPad (`hostname -I` shows the PC's IP). If it doesn't load: `sudo ufw allow 8765/tcp`.
 
-```yaml
-archive_retention_days: 30
-```
+3. **Start automatically** (systemd user service; run from the project folder):
 
-## Clockify
+   ```bash
+   mkdir -p ~/.config/systemd/user
+   cat > ~/.config/systemd/user/pc-dashboard.service <<EOF
+   [Unit]
+   Description=PC Dashboard (LAN system monitor)
+   After=network-online.target
 
-A ticket can be linked to a Clockify task: tap the ticket, pick the project and the task under **Clockify**. The list shows the open tasks of active projects that are assigned to you. Every time range you finish on a linked ticket (stopping its timer or *Add time*) is logged to Clockify as a time entry on that range's date, with the ticket title as description. Logged ranges get a ✓ in the ticket; if logging fails, the error is shown and the server retries every minute.
+   [Service]
+   ExecStart=$(which uv) run --project $(pwd) $(pwd)/server.py
+   Restart=on-failure
+   Environment=PYTHONUNBUFFERED=1
 
-Logged ranges stay in sync with Clockify:
+   [Install]
+   WantedBy=default.target
+   EOF
+   systemctl --user daemon-reload
+   systemctl --user enable --now pc-dashboard
+   sudo loginctl enable-linger $USER   # optional: start at boot, before anyone logs in
+   ```
 
-- **Edit** a range: tap its times, change them, *Confirm* → its entry is updated (same day).
-- **Del** on a range, or deleting the ticket → its entries are deleted.
-- Renaming the ticket or linking it to another task → its entries are updated.
-- Unlinking the ticket (*Not linked*) only stops logging new ranges; existing entries stay.
-- If Clockify can't be reached for an edit or delete, the change is not saved and the board shows why.
-- Ranges that were already on the ticket when you link it are logged too, on their own dates (you are asked first).
-
-Setup: copy `.env.sample` to `.env` next to `server.py` and fill in `CLOCKIFY_API_KEY` and `CLOCKIFY_USER_ID`, then restart the server. Without them the Clockify section is hidden. The project/task list is reloaded from Clockify each time you open a ticket.
-
-In `tasks.md` the link and the logged marks look like this:
-
-```
-[ ] Planning {cf:<projectId>/<taskId>} (2026-11-09 9:00-10:00✓<timeEntryId>; 2026-11-09 10:50-)
-```
-
-## Requirements
-
-- Linux with [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`). Dependencies (`psutil`, `pyyaml`) are listed in `pyproject.toml`; `uv run` installs them into `.venv` on first start
-- Optional: `nvidia-smi` for GPU stats (the GPU tile shows "not available" without it)
-
-## Run manually
-
-```bash
-uv run server.py            # listens on port 8765
-PORT=9000 uv run server.py  # use a different port
-```
-
-Open `http://<pc-ip>:8765` on the iPad. Find the PC's IP with `hostname -I`.
-
-If the page doesn't load, open the port in the firewall:
-
-```bash
-sudo ufw allow 8765/tcp
-```
+   Restart it after changing code or `.env`: `systemctl --user restart pc-dashboard`. Logs, status and removing the service: see [Development](docs/dev/DEVELOPMENT.md#the-systemd-service).
 
 ## iPad tips
 
 - **Full screen:** in Safari tap Share → *Add to Home Screen*, then open it from that icon.
-- **Theme:** the button in the top-right corner switches between dark and light; the choice is remembered in that browser.
 - **Keep the screen on:** Settings → Display & Brightness → Auto-Lock → *Never*.
-
-## Start automatically (systemd user service)
-
-### Add
-
-```bash
-mkdir -p ~/.config/systemd/user
-cat > ~/.config/systemd/user/pc-dashboard.service <<EOF
-[Unit]
-Description=PC Dashboard (LAN system monitor)
-After=network-online.target
-
-[Service]
-ExecStart=$(which uv) run --project $(pwd) $(pwd)/server.py
-Restart=on-failure
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=default.target
-EOF
-
-systemctl --user daemon-reload
-systemctl --user enable --now pc-dashboard
-```
-
-Run this from the project folder: `$(pwd)` fills in the path to `server.py`.
-
-This starts the dashboard when you log in. To start it at boot, before anyone logs in:
-
-```bash
-sudo loginctl enable-linger $USER
-```
-
-### Check
-
-```bash
-systemctl --user status pc-dashboard
-journalctl --user -u pc-dashboard -f     # logs
-systemctl --user restart pc-dashboard    # after editing server.py
-```
-
-### Remove
-
-```bash
-systemctl --user disable --now pc-dashboard
-rm ~/.config/systemd/user/pc-dashboard.service
-systemctl --user daemon-reload
-sudo loginctl disable-linger $USER       # only if you enabled linger
-```
