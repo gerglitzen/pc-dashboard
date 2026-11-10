@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """LAN system dashboard: serves index.html, a 1 Hz Server-Sent Events stream of system stats,
-and a small task board stored in a markdown file (Done tasks are archived daily).
+and a small task board stored in a JSON file (Done tasks are archived daily).
 Tickets can be linked to a Clockify task; their finished time ranges are logged to Clockify."""
 import glob
 import json
@@ -35,7 +35,7 @@ def load_env(path):
 
 load_env(os.path.join(HERE, ".env"))
 VIRTUAL_NICS = ("lo", "docker", "veth", "br-", "virbr")
-TASKS_FILE = os.path.expanduser(os.environ.get("TASKS_FILE", os.path.join(HERE, "tasks.md")))
+TASKS_FILE = os.path.expanduser(os.environ.get("TASKS_FILE", os.path.join(HERE, "tasks.json")))
 ARCHIVE_DIR = os.path.join(os.path.dirname(TASKS_FILE), "archive")
 try:
     CONFIG = yaml.safe_load(open(os.path.join(HERE, "config.yaml"), encoding="utf-8")) or {}
@@ -43,15 +43,6 @@ except FileNotFoundError:
     CONFIG = {}
 ARCHIVE_RETENTION_DAYS = int(CONFIG.get("archive_retention_days", 30))
 PRIOS = ("High", "Medium", "Low")
-# trailing time log, e.g. "(2026-11-06 9:00-10:00✓<entryId>; 2026-11-09 10:50-)"; the date is the day the range
-# started (no date = the day the file was last changed); an open end means the timer is running,
-# ✓<entryId> means the range was logged to Clockify as that time entry
-LOGGED = "✓"
-RANGE = r"(?:\d{4}-\d{2}-\d{2}\s+)?\d{1,2}:\d{2}-(?:\d{1,2}:\d{2}(?:%s[0-9a-fA-F]+)?)?" % LOGGED
-TIMES_RE = re.compile(r"\s*\((%s(?:;\s*%s)*)\)\s*$" % (RANGE, RANGE))
-PRIO_RE = re.compile(r"\s+!(high|medium|low)\s*$", re.I)  # priority tag on Done lines, before the time log
-# Clockify link before the priority tag: "{cf:<projectId>/<taskId>}"
-LINK_RE = re.compile(r"\s*\{cf:([0-9a-fA-F]+/[0-9a-fA-F]+)\}\s*$")
 tasks_lock = threading.Lock()
 clockify_error = None  # last Clockify logging error, shown on the board
 
@@ -159,16 +150,38 @@ def sampler():
 
 
 def read_tasks():
-    """Parse the task file into
-    [{title, status: backlog|progress|done, prio, clockify: "projectId/taskId" or "",
-      times: [[start, end, clockify entry id or "", "YYYY-MM-DD"]]}]."""
+    """The task list from the task file:
+    [{title, status: backlog|progress|done, prio: High|Medium|Low, clockify: "projectId/taskId" or "",
+      times: [[start "H:MM", end "H:MM" ("" = timer running), Clockify entry id or "", "YYYY-MM-DD" the range started]]}]
+    in board order."""
     try:
-        lines = open(TASKS_FILE, encoding="utf-8").read().splitlines()
-        day = date.fromtimestamp(os.stat(TASKS_FILE).st_mtime).isoformat()  # for ranges without a date
+        with open(TASKS_FILE, encoding="utf-8") as f:
+            return json.load(f)["tasks"]
     except FileNotFoundError:
         return []
+
+
+def write_tasks(tasks):
+    tmp = TASKS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"tasks": tasks}, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, TASKS_FILE)
+
+
+def migrate_md():
+    """One-time move from the old markdown task file: if there is no task file yet but a tasks.md next to it,
+    convert it (keeping its date, which the archive uses) and rename it to tasks.md.bak."""
+    md = os.path.join(os.path.dirname(TASKS_FILE), "tasks.md")
+    if os.path.exists(TASKS_FILE) or not os.path.exists(md):
+        return
+    rng = r"(?:\d{4}-\d{2}-\d{2}\s+)?\d{1,2}:\d{2}-(?:\d{1,2}:\d{2}(?:✓[0-9a-fA-F]+)?)?"
+    times_re = re.compile(r"\s*\((%s(?:;\s*%s)*)\)\s*$" % (rng, rng))  # "(2026-11-06 9:00-10:00✓<entryId>; 10:50-)"
+    prio_re = re.compile(r"\s+!(high|medium|low)\s*$", re.I)  # priority tag on Done lines
+    link_re = re.compile(r"\s*\{cf:([0-9a-fA-F]+/[0-9a-fA-F]+)\}\s*$")
+    st = os.stat(md)
+    day = date.fromtimestamp(st.st_mtime).isoformat()  # for ranges without a date
     tasks, status, prio = [], "backlog", "Medium"
-    for line in lines:
+    for line in open(md, encoding="utf-8").read().splitlines():
         s = line.strip()
         if s.startswith("# "):
             h = s.lower()
@@ -179,47 +192,26 @@ def read_tasks():
             prio = prio if prio in PRIOS else "Medium"
         elif s[:3] in ("[ ]", "[x]", "[X]"):
             title, times, link = s[3:].strip(), [], ""
-            m = TIMES_RE.search(title)
+            m = times_re.search(title)
             if m:
                 title = title[:m.start()]
                 for r in m.group(1).split(";"):
                     d, _, r = r.strip().rpartition(" ")
                     start, end = r.split("-")
-                    end, _, entry = end.partition(LOGGED)
+                    end, _, entry = end.partition("✓")
                     times.append([start, end, entry, d.strip() or day])
-            p = PRIO_RE.search(title)
+            p = prio_re.search(title)
             if p:
                 title = title[:p.start()]
-            m = LINK_RE.search(title)
+            m = link_re.search(title)
             if m:
                 title, link = title[:m.start()], m.group(1)
-            tasks.append({"title": title, "status": status, "prio": p.group(1).capitalize() if p else prio,
-                          "clockify": link, "times": times})
-    return tasks
-
-
-def write_tasks(tasks):
-    def items(status, prio=None):
-        out = []
-        for t in tasks:
-            if t["status"] == status and (prio is None or t["prio"] == prio):
-                times = "; ".join(r[3] + " " + r[0] + "-" + r[1] + (LOGGED + r[2] if r[2] else "") for r in t["times"])
-                out.append("[%s] %s%s%s%s" % ("x" if status == "done" else " ", " ".join(t["title"].split()),
-                                              " {cf:%s}" % t["clockify"] if t.get("clockify") else "",
-                                              "" if prio else " !" + t["prio"], " (%s)" % times if times else ""))
-        return out
-
-    lines = []
-    for head, status in (("Backlog", "backlog"), ("In progress", "progress")):
-        lines += ["# " + head]
-        for p in PRIOS:
-            lines += ["## " + p] + items(status, p) + [""]
-        lines += [""]
-    lines += ["# Done"] + items("done")
-    tmp = TASKS_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    os.replace(tmp, TASKS_FILE)
+            tasks.append({"title": " ".join(title.split()), "status": status,
+                          "prio": p.group(1).capitalize() if p else prio, "clockify": link, "times": times})
+    write_tasks(tasks)
+    os.utime(TASKS_FILE, ns=(st.st_atime_ns, st.st_mtime_ns))
+    os.rename(md, md + ".bak")
+    print(f"Converted {md} to {TASKS_FILE} (the old file is now tasks.md.bak)")
 
 
 def archive_done():
@@ -368,10 +360,11 @@ class Handler(BaseHTTPRequestHandler):
             state = tasks_state()
             if body["version"] != state["version"]:
                 return self.send_json(409, state)
-            tasks = [dict(t, clockify=t.get("clockify") or "",
-                          times=[[r[0], r[1], r[2] if len(r) > 2 and isinstance(r[2], str) else "",
-                                  r[3] if len(r) > 3 and r[3] else date.today().isoformat()]
-                                 for r in t["times"]]) for t in body["tasks"]]
+            tasks = [{"title": " ".join(t["title"].split()), "status": t["status"], "prio": t["prio"],
+                      "clockify": t.get("clockify") or "",
+                      "times": [[r[0], r[1], r[2] if len(r) > 2 and isinstance(r[2], str) else "",
+                                 r[3] if len(r) > 3 and r[3] else date.today().isoformat()] for r in t["times"]]}
+                     for t in body["tasks"]]
             merge_ids(tasks, state["tasks"])
             if clockify.enabled():
                 try:
@@ -423,6 +416,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    migrate_md()
     threading.Thread(target=sampler, daemon=True).start()
     threading.Thread(target=archiver, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)

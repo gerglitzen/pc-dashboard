@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
+tasks.json
 tasks.md
+tasks.md.bak
 archive/
 .venv/
 .env

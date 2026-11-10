@@ -453,7 +453,7 @@
   });
   window.addEventListener('resize', function () { place(null); });
 
-  // ---- Tasks: stored by the server in a markdown file ----
+  // ---- Tasks: stored by the server in a JSON file ----
   // task = {title, status: 'backlog'|'progress'|'done', prio: 'High'|'Medium'|'Low', clockify: 'projectId/taskId' or '',
   //         times: [[start, end, entryId, date]]}
   // times are 'H:MM'; an empty end means the timer is running; entryId = its Clockify time entry ('' = not logged; set by the server);
