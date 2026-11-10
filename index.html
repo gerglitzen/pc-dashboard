@@ -165,6 +165,14 @@
   .timebar > * { margin: 0 8px 8px 0; }
   #s-timer { display: flex; align-items: center; }
   #s-timer svg { margin: 0 8px 0 0; }
+  #tbar .btn { padding: 4px 10px; }
+  #filter .btn { margin-left: 4px; }
+  #ask { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 20; display: none; align-items: center; justify-content: center;
+    padding: 0 16px; background: rgba(0,0,0,.45); }
+  #ask.show { display: flex; }
+  #ask .box { width: 440px; max-width: 100%; padding: 20px; border-radius: 16px; background: var(--surface-1); box-shadow: 0 24px 60px rgba(0,0,0,.4); }
+  #ask .btn { margin: 14px 6px 0 0; }
+  #ask .btn:disabled { opacity: .4; }
   #toast { position: fixed; left: 50%; bottom: 24px; z-index: 30; padding: 11px 18px; border-radius: 10px; font-size: 14px;
     background: var(--text-primary); color: var(--surface-0); box-shadow: 0 8px 24px rgba(0,0,0,.3);
     transform: translate(-50%, 100px); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
@@ -175,7 +183,7 @@
 <header>
   <div class="group"><span><i class="dot" id="conn"></i><b id="host">—</b></span><span id="uptime"></span></div>
   <div class="group" id="tabs"><i></i><button class="on" type="button">System</button><button type="button">Tasks</button></div>
-  <div class="group"><span id="bat"></span><span id="clock"></span><button id="theme" type="button"></button></div>
+  <div class="group"><span id="tbar" style="display:none"><span id="filter"><button class="btn" type="button" data-f="all">All</button><button class="btn" type="button" data-f="assignee">Assigned</button><button class="btn" type="button" data-f="reviewer">Review</button></span><button class="btn" id="sync" type="button">⟳ Notion</button></span><span id="bat"></span><span id="clock"></span><button id="theme" type="button"></button></div>
 </header>
 <div id="pages"><div id="track">
 <main class="page">
@@ -254,6 +262,7 @@
   <div class="timebar"><input id="s-from" type="time"><span>–</span><input id="s-to" type="time"><button class="btn" id="s-addtime" type="button">Add time</button></div>
   <div class="row" style="margin-top:14px"><button class="btn" id="s-del" type="button" style="color:var(--critical)">Delete</button><button class="btn on" id="s-close" type="button">Done</button></div>
 </div></div>
+<div id="ask"><div class="box"><div id="ask-t"></div><div id="ask-b"><button class="btn" type="button" data-st="Done">Done</button><button class="btn" type="button" data-st="In review">In review</button><button class="btn" type="button" data-st="">Leave as is</button></div></div></div>
 <div id="toast"></div>
 <script>
 (function () {
@@ -424,6 +433,7 @@
     page = p; track.className = ''; document.body.className = ''; place(null);
     tabBtns[0].className = p ? '' : 'on'; tabBtns[1].className = p ? 'on' : '';
     if (p) loadTasks();
+    $('tbar').style.display = p && notionOn ? '' : 'none';
     stream(!p); // stats are only needed on the System page
   }
   tabBtns[0].onclick = function () { show(0); }; tabBtns[1].onclick = function () { show(1); };
@@ -455,10 +465,13 @@
 
   // ---- Tasks: stored by the server in a JSON file ----
   // task = {title, status: 'backlog'|'progress'|'done', prio: 'High'|'Medium'|'Low', clockify: 'projectId/taskId' or '',
-  //         times: [[start, end, entryId, date]]}
+  //         notion: 'GEN-<n>' or '' (its Notion ticket), role: 'assignee'|'reviewer'|'' (mine on it), times: [[start, end, entryId, date]]}
   // times are 'H:MM'; an empty end means the timer is running; entryId = its Clockify time entry ('' = not logged; set by the server);
   // date = 'YYYY-MM-DD' the range started. The board shows only today's ranges (and a running one); the sheet can show all.
   var tasks = [], version = null, cur = null, busy = null, queued = false;
+  var notionOn = false, notionErr = null, askGen = null; // Notion set up; last sync error; the ticket the Done dialog is about
+  var filter = 'all'; // show all tickets, only mine ('assignee', also the ones without a Notion ticket) or the ones I review
+  try { filter = localStorage.getItem('filter') || 'all'; } catch (e) {}
   var cf = null, cfTask = {}, cfErr = null, sheetProj = ''; // Clockify projects (null = off), taskId -> [project, task]
   var editIdx = null; // index of the time range being edited in place in the sheet
   var showAll = false; // the sheet lists every range, not only today's
@@ -486,11 +499,73 @@
     t.times.forEach(function (r) { if (!r[1]) r[1] = n; });
   }
   function moveTo(t, status, prio, before) { // before = task to insert above; none = bottom of the column
+    var from = t.status;
     if (status !== 'progress' && running(t)) stopTimer(t);
     t.status = status; if (prio) t.prio = prio;
     tasks.splice(tasks.indexOf(t), 1);
     if (before) tasks.splice(tasks.indexOf(before), 0, t); else tasks.push(t);
+    if (from !== status) notionMoved(t, status);
   }
+
+  // ---- Notion: the server applies the status rules of a move; a move to Done asks which status to set ----
+  function notionPost(path, body, ok, always) {
+    var x = new XMLHttpRequest();
+    x.open('POST', 'notion/' + path);
+    x.onload = function () {
+      if (always) always();
+      var r = JSON.parse(x.responseText);
+      if (x.status === 200) ok(r); else { toast('Notion: ' + r.error); if (path === 'move' && askGen === body.notion) closeAsk(); }
+    };
+    x.onerror = function () { if (always) always(); toast('Could not reach the PC — Notion not changed'); };
+    x.send(JSON.stringify(body));
+  }
+  function notionMoved(t, to) {
+    if (!notionOn || !t.notion) return;
+    var gen = t.notion;
+    if (to === 'done') openAsk(t);
+    notionPost('move', { notion: gen, to: to }, function (r) {
+      var o = tasks.filter(function (x) { return x.notion === gen; })[0];
+      if (o && r.role && o.role !== r.role) { o.role = r.role; save(); } // my role learned from Notion
+      if (r.changed) toast('Notion ' + gen + ' → ' + r.status);
+      if (to === 'done' && askGen === gen) askReady(r.suggest);
+    });
+  }
+  function askButtons() { return $('ask-b').querySelectorAll('.btn'); }
+  function openAsk(t) {
+    askGen = t.notion; $('ask-t').textContent = 'Set ' + t.notion + ' "' + t.title + '" in Notion to: (checking…)';
+    [].forEach.call(askButtons(), function (b) { b.disabled = true; b.className = 'btn'; });
+    $('ask').className = 'show';
+  }
+  function askReady(suggest) { // the suggested status is highlighted; any of them can be picked
+    $('ask-t').textContent = $('ask-t').textContent.replace(' (checking…)', '');
+    [].forEach.call(askButtons(), function (b) { b.disabled = false; b.className = 'btn' + (b.getAttribute('data-st') === suggest ? ' on' : ''); });
+  }
+  function closeAsk() { askGen = null; $('ask').className = ''; }
+  $('ask').onclick = function (e) { // a button, or the backdrop = leave as is
+    var st = e.target.getAttribute('data-st'), gen = askGen;
+    if (e.target !== this && (st === null || e.target.disabled)) return;
+    closeAsk();
+    if (st) notionPost('status', { notion: gen, status: st }, function (r) { toast('Notion ' + gen + (r.changed ? ' → ' : ' is already ') + r.status); });
+  };
+  function syncLabel() { $('sync').textContent = '⟳ Notion'; $('sync').disabled = false; }
+  $('sync').onclick = function () {
+    if (this.disabled) return;
+    this.disabled = true; this.textContent = 'Syncing…';
+    notionPost('sync', {}, function (r) {
+      toast('Notion: ' + (r.added ? r.added + ' added' : 'nothing new') + (r.waiting.length ? ', waiting for Clockify: ' + r.waiting.join(', ') : ''));
+      loadTasks();
+    }, syncLabel);
+  };
+  function renderFilter() {
+    [].forEach.call($('filter').querySelectorAll('.btn'), function (b) { b.className = 'btn' + (b.getAttribute('data-f') === filter ? ' on' : ''); });
+  }
+  $('filter').onclick = function (e) {
+    var f = e.target.getAttribute('data-f'); if (!f) return;
+    filter = f; try { localStorage.setItem('filter', f); } catch (er) {}
+    renderFilter(); renderTasks();
+  };
+  renderFilter();
+  function shown(t) { return filter === 'all' || (filter === 'reviewer') === (t.role === 'reviewer'); }
   function toggleTimer(t) {
     if (running(t)) stopTimer(t);
     else {
@@ -522,6 +597,8 @@
       } else markLogged(r.tasks);
       if (r.clockify_error && r.clockify_error !== cfErr) toast('Clockify: ' + r.clockify_error);
       cfErr = r.clockify_error;
+      if (r.notion_error && r.notion_error !== notionErr) toast('Notion ' + r.notion_error);
+      notionErr = r.notion_error; notionOn = r.notion; $('tbar').style.display = page && notionOn ? '' : 'none';
       if (cur) renderSheet();
       if (queued) { queued = false; save(); }
     };
@@ -558,7 +635,7 @@
     var i = tasks.indexOf(t), run = running(t), play = t.status === 'progress';
     var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title);
     var link = t.clockify && cfTask[t.clockify.split('/')[1]];
-    if (link) h += '<div class="cfn">' + esc(link[1].name) + '</div>';
+    if (link || t.notion) h += '<div class="cfn">' + (t.role === 'reviewer' ? 'Review · ' : '') + esc(link ? link[1].name : t.notion) + '</div>';
     var tt = todays(t);
     if (tt.length)
       h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(tt)) + ' · ' +
@@ -572,11 +649,12 @@
     ['backlog', 'progress'].forEach(function (s) { // grouped by priority
       PRIOS.forEach(function (p) {
         h[s] += '<div class="zone" data-s="' + s + '" data-p="' + p + '"><span class="prio status" style="--sc:var(' + PRIO_COLOR[p] + ')">' + p + '</span>';
-        tasks.forEach(function (t) { if (t.status === s && t.prio === p) h[s] += card(t); });
+        tasks.forEach(function (t) { if (t.status === s && t.prio === p && shown(t)) h[s] += card(t); });
         h[s] += '</div>';
       });
     });
     tasks.forEach(function (t) {
+      if (!shown(t)) return;
       n[t.status]++;
       if (t.status === 'done') h.done += card(t);
       if (t.status !== 'backlog') tot[t.status] += spent(todays(t));
@@ -596,7 +674,7 @@
   $('add').oninput = function () { askPrio(null); };
   $('add-prio').onclick = function (e) {
     var p = e.target.getAttribute('data-p'); if (!p || !newTitle) return;
-    tasks.push({ title: newTitle, status: 'backlog', prio: p, clockify: '', times: [] });
+    tasks.push({ title: newTitle, status: 'backlog', prio: p, clockify: '', notion: '', role: '', times: [] });
     $('add').value = ''; askPrio(null); save();
   };
 
@@ -778,6 +856,8 @@
     if (link && !cur.clockify && old &&
         !confirm('This ticket already has ' + old + ' time range(s) that are not in Clockify. Linking logs them too, on their own dates. Link it?'))
       return renderSheet();
+    var gen = link && /^([A-Z]+-\d+):/.exec(cfTask[this.value][1].name); // a Clockify task name starts with its Notion ticket
+    if (gen && gen[1] !== cur.notion) { cur.notion = gen[1]; cur.role = ''; }
     cur.clockify = link; save();
   };
   $('s-move').onclick = function (e) {
