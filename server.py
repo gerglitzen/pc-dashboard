@@ -364,7 +364,8 @@ def add_tickets(found, links):
 def notion_sync():
     """The daily import, also run by the Sync button. Takes my Notion tickets (notion.my_tasks); for the ones already on
     the board it only fills in my role, and moves a ticket I'm assigned to from Done back to In progress when it is
-    In progress in Notion again (the reviewer sent it back). New ones assigned to me that are still Backlog in Notion are
+    In progress in Notion again (the reviewer sent it back). Board tickets that aren't in that list (e.g. no due date)
+    and don't know my role yet get it from their own Notion ticket. New ones assigned to me that are still Backlog in Notion are
     set to Not started there, so their Clockify task gets created. A new ticket is added once its Clockify task is
     there. Returns (number added, tickets still waiting for their Clockify task). Raises NotionError / ClockifyError."""
     global notion_error
@@ -373,17 +374,22 @@ def notion_sync():
     links = clockify_links() if clockify.enabled() else {}
     gens = {link: gen for gen, (link, _) in links.items()}
     by_gen = {n["gen"]: n for n in found}
+    roles = {}  # my role on the board's other Notion tickets that don't know it yet (e.g. ones without a due date)
+    for gen in {t["notion"] or gens.get(t["clockify"], "") for t in read_tasks() if not t["role"]} - set(by_gen) - {""}:
+        try:
+            roles[gen] = notion.get_task(gen)["role"]
+        except notion.NotionError:
+            pass  # tried again at the next sync
     with tasks_lock:
         tasks, back = read_tasks(), []
         for t in tasks:
             if not t["notion"] and t["clockify"] in gens:  # linked to the Clockify task of a Notion ticket by hand
                 t["notion"] = gens[t["clockify"]]
             n = by_gen.get(t["notion"])
-            if n:
-                t["role"] = n["role"]
-                if n["role"] == "assignee" and n["status"] == "In progress" and t["status"] == "done":
-                    t["status"] = "progress"
-                    back.append(t)
+            t["role"] = n["role"] if n else roles.get(t["notion"], t["role"])
+            if n and n["role"] == "assignee" and n["status"] == "In progress" and t["status"] == "done":
+                t["status"] = "progress"
+                back.append(t)
         tasks = [t for t in tasks if not any(t is b for b in back)] + back  # at the bottom of In progress
         have = {t["notion"] for t in tasks}
         write_tasks(tasks, notion_day=day)
