@@ -153,6 +153,7 @@
   #s-people { min-width: 150px; font-size: 15px; }
   #s-people .label { margin-bottom: 4px; }
   #s-people a { color: var(--series-1); }
+  #s-people .prs { margin-top: 16px; line-height: 1.6; }
   #s-move .btn, #s-prio .btn { margin: 0 6px 6px 0; }
   #s-prio .btn { border-left: 4px solid var(--pc); }
   #sheet input { font: inherit; font-size: 16px; color: var(--text-primary); background: var(--surface-0);
@@ -851,10 +852,10 @@
       function who(names) { return names.length ? names.map(esc).join('<br>') : '<span class="sub">—</span>'; }
       $('s-people').innerHTML = '<div class="label">Assignee</div><div>' + who(r.assignees) + '</div>' +
         '<div class="label">Reviewer</div><div>' + who(r.reviewers) + '</div>' +
-        r.prs.map(function (u) { // GitHub Pull Requests: "PR #347"
+        (r.prs.length ? '<div class="prs">' + r.prs.map(function (u) { // GitHub Pull Requests: "PR #347"
           var m = u.match(/\/pull\/(\d+)/);
-          return '<div style="margin-top:6px"><a href="' + esc(u) + '" target="_blank" rel="noopener">PR' + (m ? ' #' + m[1] : '') + '</a></div>';
-        }).join('');
+          return '<div><a href="' + esc(u) + '" target="_blank" rel="noopener">PR' + (m ? ' #' + m[1] : '') + '</a></div>';
+        }).join('') + '</div>' : '');
     };
     x.send();
   }
