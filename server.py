@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """LAN system dashboard: serves index.html, a 1 Hz Server-Sent Events stream of system stats,
-and a small task board stored in a markdown file (Done tasks are archived daily).
-Tickets can be linked to a Clockify task; their finished time ranges are logged to Clockify."""
+and a small task board stored in a JSON file (Done tasks are archived daily).
+Tickets can be linked to a Clockify task; their finished time ranges are logged to Clockify.
+My Notion tickets come to the board daily (or on Sync), and moving a ticket can set its Notion status."""
 import glob
 import json
 import os
@@ -17,6 +18,7 @@ import psutil
 import yaml
 
 import clockify
+import notion
 
 PORT = int(os.environ.get("PORT", 8765))
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -35,7 +37,7 @@ def load_env(path):
 
 load_env(os.path.join(HERE, ".env"))
 VIRTUAL_NICS = ("lo", "docker", "veth", "br-", "virbr")
-TASKS_FILE = os.path.expanduser(os.environ.get("TASKS_FILE", os.path.join(HERE, "tasks.md")))
+TASKS_FILE = os.path.expanduser(os.environ.get("TASKS_FILE", os.path.join(HERE, "tasks.json")))
 ARCHIVE_DIR = os.path.join(os.path.dirname(TASKS_FILE), "archive")
 try:
     CONFIG = yaml.safe_load(open(os.path.join(HERE, "config.yaml"), encoding="utf-8")) or {}
@@ -43,17 +45,13 @@ except FileNotFoundError:
     CONFIG = {}
 ARCHIVE_RETENTION_DAYS = int(CONFIG.get("archive_retention_days", 30))
 PRIOS = ("High", "Medium", "Low")
-# trailing time log, e.g. "(2026-11-06 9:00-10:00✓<entryId>; 2026-11-09 10:50-)"; the date is the day the range
-# started (no date = the day the file was last changed); an open end means the timer is running,
-# ✓<entryId> means the range was logged to Clockify as that time entry
-LOGGED = "✓"
-RANGE = r"(?:\d{4}-\d{2}-\d{2}\s+)?\d{1,2}:\d{2}-(?:\d{1,2}:\d{2}(?:%s[0-9a-fA-F]+)?)?" % LOGGED
-TIMES_RE = re.compile(r"\s*\((%s(?:;\s*%s)*)\)\s*$" % (RANGE, RANGE))
-PRIO_RE = re.compile(r"\s+!(high|medium|low)\s*$", re.I)  # priority tag on Done lines, before the time log
-# Clockify link before the priority tag: "{cf:<projectId>/<taskId>}"
-LINK_RE = re.compile(r"\s*\{cf:([0-9a-fA-F]+/[0-9a-fA-F]+)\}\s*$")
+GEN_RE = re.compile(r"^([A-Z]+-\d+):\s*")  # Clockify task names start with their Notion ticket: "GEN-4544:..."
 tasks_lock = threading.Lock()
 clockify_error = None  # last Clockify logging error, shown on the board
+notion_error = None  # last Notion sync error, shown on the board
+sync_lock = threading.Lock()  # one Notion sync at a time (it may wait a minute for Clockify tasks)
+picks = None  # my Notion tickets to add by hand (notion.pickable), loaded at start and by every sync
+projects = None  # the In progress projects I own with their open tickets, to create tickets in (notion.my_projects); same
 
 cond = threading.Condition()
 latest = "{}"
@@ -158,17 +156,45 @@ def sampler():
             cond.notify_all()
 
 
-def read_tasks():
-    """Parse the task file into
-    [{title, status: backlog|progress|done, prio, clockify: "projectId/taskId" or "",
-      times: [[start, end, clockify entry id or "", "YYYY-MM-DD"]]}]."""
+def read_state():
+    """The task file: {notion_day: "YYYY-MM-DD" of the last Notion sync, tasks: [...]}."""
     try:
-        lines = open(TASKS_FILE, encoding="utf-8").read().splitlines()
-        day = date.fromtimestamp(os.stat(TASKS_FILE).st_mtime).isoformat()  # for ranges without a date
+        with open(TASKS_FILE, encoding="utf-8") as f:
+            return json.load(f)
     except FileNotFoundError:
-        return []
+        return {"notion_day": "", "tasks": []}
+
+
+def read_tasks():
+    """The task list in board order:
+    [{title, status: backlog|progress|done, prio: High|Medium|Low, clockify: "projectId/taskId" or "",
+      notion: "GEN-<n>" or "", role: my role on the Notion ticket, "assignee" | "reviewer" | "" (unknown / none),
+      times: [[start "H:MM", end "H:MM" ("" = timer running), Clockify entry id or "", "YYYY-MM-DD" the range started]]}]"""
+    return [dict({"notion": "", "role": ""}, **t) for t in read_state()["tasks"]]
+
+
+def write_tasks(tasks, notion_day=None):
+    state = {"notion_day": notion_day or read_state().get("notion_day", ""), "tasks": tasks}
+    tmp = TASKS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, TASKS_FILE)
+
+
+def migrate_md():
+    """One-time move from the old markdown task file: if there is no task file yet but a tasks.md next to it,
+    convert it (keeping its date, which the archive uses) and rename it to tasks.md.bak."""
+    md = os.path.join(os.path.dirname(TASKS_FILE), "tasks.md")
+    if os.path.exists(TASKS_FILE) or not os.path.exists(md):
+        return
+    rng = r"(?:\d{4}-\d{2}-\d{2}\s+)?\d{1,2}:\d{2}-(?:\d{1,2}:\d{2}(?:✓[0-9a-fA-F]+)?)?"
+    times_re = re.compile(r"\s*\((%s(?:;\s*%s)*)\)\s*$" % (rng, rng))  # "(2026-11-06 9:00-10:00✓<entryId>; 10:50-)"
+    prio_re = re.compile(r"\s+!(high|medium|low)\s*$", re.I)  # priority tag on Done lines
+    link_re = re.compile(r"\s*\{cf:([0-9a-fA-F]+/[0-9a-fA-F]+)\}\s*$")
+    st = os.stat(md)
+    day = date.fromtimestamp(st.st_mtime).isoformat()  # for ranges without a date
     tasks, status, prio = [], "backlog", "Medium"
-    for line in lines:
+    for line in open(md, encoding="utf-8").read().splitlines():
         s = line.strip()
         if s.startswith("# "):
             h = s.lower()
@@ -179,47 +205,26 @@ def read_tasks():
             prio = prio if prio in PRIOS else "Medium"
         elif s[:3] in ("[ ]", "[x]", "[X]"):
             title, times, link = s[3:].strip(), [], ""
-            m = TIMES_RE.search(title)
+            m = times_re.search(title)
             if m:
                 title = title[:m.start()]
                 for r in m.group(1).split(";"):
                     d, _, r = r.strip().rpartition(" ")
                     start, end = r.split("-")
-                    end, _, entry = end.partition(LOGGED)
+                    end, _, entry = end.partition("✓")
                     times.append([start, end, entry, d.strip() or day])
-            p = PRIO_RE.search(title)
+            p = prio_re.search(title)
             if p:
                 title = title[:p.start()]
-            m = LINK_RE.search(title)
+            m = link_re.search(title)
             if m:
                 title, link = title[:m.start()], m.group(1)
-            tasks.append({"title": title, "status": status, "prio": p.group(1).capitalize() if p else prio,
-                          "clockify": link, "times": times})
-    return tasks
-
-
-def write_tasks(tasks):
-    def items(status, prio=None):
-        out = []
-        for t in tasks:
-            if t["status"] == status and (prio is None or t["prio"] == prio):
-                times = "; ".join(r[3] + " " + r[0] + "-" + r[1] + (LOGGED + r[2] if r[2] else "") for r in t["times"])
-                out.append("[%s] %s%s%s%s" % ("x" if status == "done" else " ", " ".join(t["title"].split()),
-                                              " {cf:%s}" % t["clockify"] if t.get("clockify") else "",
-                                              "" if prio else " !" + t["prio"], " (%s)" % times if times else ""))
-        return out
-
-    lines = []
-    for head, status in (("Backlog", "backlog"), ("In progress", "progress")):
-        lines += ["# " + head]
-        for p in PRIOS:
-            lines += ["## " + p] + items(status, p) + [""]
-        lines += [""]
-    lines += ["# Done"] + items("done")
-    tmp = TASKS_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    os.replace(tmp, TASKS_FILE)
+            tasks.append({"title": " ".join(title.split()), "status": status,
+                          "prio": p.group(1).capitalize() if p else prio, "clockify": link, "times": times})
+    write_tasks(tasks)
+    os.utime(TASKS_FILE, ns=(st.st_atime_ns, st.st_mtime_ns))
+    os.rename(md, md + ".bak")
+    print(f"Converted {md} to {TASKS_FILE} (the old file is now tasks.md.bak)")
 
 
 def archive_done():
@@ -329,12 +334,166 @@ def retry_logging():
         os.utime(TASKS_FILE, ns=(st.st_atime_ns, st.st_mtime_ns))
 
 
+def clockify_links():
+    """GEN id -> ("projectId/taskId", task name without the id) of my Clockify tasks named "GEN-<n>:...", fresh."""
+    return {m.group(1): (p["id"] + "/" + t["id"], t["name"][m.end():].strip())
+            for p in clockify.catalog(refresh=True) for t in p["tasks"] for m in [GEN_RE.match(t["name"])] if m}
+
+
+def add_tickets(found, links):
+    """Add Notion tickets that aren't on the board yet: In progress ones I'm assigned to into In progress, the rest
+    into Backlog; titled by their Notion Task Name (the card shows the full Clockify name under it). Returns the ones whose Clockify task isn't there yet (not added)."""
+    left, added = [], False
+    with tasks_lock:
+        tasks = read_tasks()
+        have = {t["notion"] for t in tasks}
+        for n in found:
+            if n["gen"] in have:
+                continue
+            if clockify.enabled() and n["gen"] not in links:
+                left.append(n)
+                continue
+            link = links.get(n["gen"], ("", ""))[0]
+            tasks.append({"title": n["title"], "prio": n["prio"] if n["prio"] in PRIOS else "Medium",
+                          "status": "progress" if n["role"] == "assignee" and n["status"] == "In progress" else "backlog",
+                          "clockify": link, "notion": n["gen"], "role": n["role"], "times": []})
+            added = True
+        if added:
+            write_tasks(tasks)
+    return left
+
+
+def notion_sync():
+    """The daily import, also run by the Sync button. Takes my Notion tickets (notion.my_tasks); for the ones already on
+    the board it only fills in my role, and moves a ticket I'm assigned to from Done back to In progress when it is
+    In progress in Notion again (the reviewer sent it back). Board tickets that aren't in that list (e.g. no due date)
+    and don't know my role yet get it from their own Notion ticket. New ones assigned to me that are still Backlog in Notion are
+    set to Not started there, so their Clockify task gets created. A new ticket is added once its Clockify task is
+    there. Returns (number added, tickets still waiting for their Clockify task). Raises NotionError / ClockifyError."""
+    global notion_error
+    day = date.today().isoformat()
+    found = notion.my_tasks(day)
+    links = clockify_links() if clockify.enabled() else {}
+    gens = {link: gen for gen, (link, _) in links.items()}
+    by_gen = {n["gen"]: n for n in found}
+    roles = {}  # my role on the board's other Notion tickets that don't know it yet (e.g. ones without a due date)
+    for gen in {t["notion"] or gens.get(t["clockify"], "") for t in read_tasks() if not t["role"]} - set(by_gen) - {""}:
+        try:
+            roles[gen] = notion.get_task(gen)["role"]
+        except notion.NotionError:
+            pass  # tried again at the next sync
+    with tasks_lock:
+        tasks, back = read_tasks(), []
+        for t in tasks:
+            if not t["notion"] and t["clockify"] in gens:  # linked to the Clockify task of a Notion ticket by hand
+                t["notion"] = gens[t["clockify"]]
+            if t["notion"] and not t["clockify"] and t["notion"] in links:  # its Clockify task wasn't there when added
+                t["clockify"] = links[t["notion"]][0]
+            n = by_gen.get(t["notion"])
+            t["role"] = n["role"] if n else roles.get(t["notion"], t["role"])
+            if n and n["role"] == "assignee" and n["status"] == "In progress" and t["status"] == "done":
+                t["status"] = "progress"
+                back.append(t)
+        tasks = [t for t in tasks if not any(t is b for b in back)] + back  # at the bottom of In progress
+        have = {t["notion"] for t in tasks}
+        write_tasks(tasks, notion_day=day)
+    new = []
+    for n in found:
+        if n["gen"] in have:
+            continue
+        if n["role"] == "assignee" and n["status"] == "Backlog":
+            try:
+                notion.set_status(n["id"], "Not started")
+            except notion.NotionError as e:
+                notion_error = "%s: %s" % (n["gen"], e)
+                continue
+            n["status"] = "Not started"
+        new.append(n)
+    left = add_tickets(new, links)
+    return len(new) - len(left), left
+
+
+def wait_for_clockify(left):
+    """Check Clockify every 10 s, 6 times, and add the tickets whose task appeared; the rest is reported."""
+    global notion_error
+    for _ in range(6):
+        if not left:
+            return
+        time.sleep(10)
+        try:
+            left = add_tickets(left, clockify_links())
+        except clockify.ClockifyError:
+            pass
+    if left:
+        notion_error = "no Clockify task after a minute for %s, not added. Sync again later." % ", ".join(
+            n["gen"] for n in left)
+
+
+def link_when_ready(gen):
+    """Link the board ticket of Notion ticket gen to its Clockify task once that appears (checked every 10 s, 6 times)."""
+    global notion_error
+    for _ in range(6):
+        time.sleep(10)
+        try:
+            link = clockify_links().get(gen)
+        except clockify.ClockifyError:
+            continue
+        if link:
+            with tasks_lock:
+                tasks = read_tasks()
+                for t in tasks:
+                    if t["notion"] == gen and not t["clockify"]:
+                        t["clockify"] = link[0]
+                write_tasks(tasks)
+            return
+    notion_error = "no Clockify task after a minute for %s; it is linked at the next sync." % gen
+
+
+def load_picks():
+    global picks, projects, notion_error
+    try:
+        picks, projects = notion.pickable(), notion.my_projects()
+    except notion.NotionError as e:
+        notion_error = "loading the tickets to add: %s" % e
+
+
+def run_sync():
+    """Sync under sync_lock (already acquired), waiting for missing Clockify tasks; returns (added, waiting gens).
+    The lock is released when the waiting is over. Raises like notion_sync."""
+    global notion_error
+    notion_error = None
+    try:
+        added, left = notion_sync()
+    except Exception:
+        sync_lock.release()
+        raise
+
+    def wait():
+        try:
+            load_picks()
+            wait_for_clockify(left)
+        finally:
+            sync_lock.release()
+
+    threading.Thread(target=wait, daemon=True).start()
+    return added, [n["gen"] for n in left]
+
+
 def archiver():
+    global notion_error
     while True:
         with tasks_lock:
             if clockify.enabled():
                 retry_logging()
-            archive_done()
+            archive_done()  # before the Notion sync, which changes the file's day
+        if notion.enabled() and picks is None and read_state().get("notion_day") == date.today().isoformat():
+            load_picks()  # started later in the day: the daily sync (which loads them) already ran
+        if notion.enabled() and read_state().get("notion_day") != date.today().isoformat() \
+                and sync_lock.acquire(blocking=False):
+            try:
+                run_sync()
+            except (notion.NotionError, clockify.ClockifyError) as e:
+                notion_error = "sync: %s" % e  # retried in a minute
         prune_archive()
         time.sleep(60)
 
@@ -344,7 +503,8 @@ def tasks_state():
         version = str(os.stat(TASKS_FILE).st_mtime_ns)
     except FileNotFoundError:
         version = "0"
-    return {"version": version, "tasks": read_tasks(), "clockify_error": clockify_error}
+    return {"version": version, "tasks": read_tasks(), "clockify_error": clockify_error,
+            "notion": notion.enabled(), "notion_error": notion_error}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -368,10 +528,11 @@ class Handler(BaseHTTPRequestHandler):
             state = tasks_state()
             if body["version"] != state["version"]:
                 return self.send_json(409, state)
-            tasks = [dict(t, clockify=t.get("clockify") or "",
-                          times=[[r[0], r[1], r[2] if len(r) > 2 and isinstance(r[2], str) else "",
-                                  r[3] if len(r) > 3 and r[3] else date.today().isoformat()]
-                                 for r in t["times"]]) for t in body["tasks"]]
+            tasks = [{"title": " ".join(t["title"].split()), "status": t["status"], "prio": t["prio"],
+                      "clockify": t.get("clockify") or "", "notion": t.get("notion") or "", "role": t.get("role") or "",
+                      "times": [[r[0], r[1], r[2] if len(r) > 2 and isinstance(r[2], str) else "",
+                                 r[3] if len(r) > 3 and r[3] else date.today().isoformat()] for r in t["times"]]}
+                     for t in body["tasks"]]
             merge_ids(tasks, state["tasks"])
             if clockify.enabled():
                 try:
@@ -382,6 +543,91 @@ class Handler(BaseHTTPRequestHandler):
             if clockify.enabled() and log_pending(tasks):
                 write_tasks(tasks)
             self.send_json(200, dict(tasks_state(), tasks=tasks))
+
+    def do_POST(self):
+        """Notion:
+        /notion/sync: run the sync now; replies {added, waiting: [GEN ids waiting for their Clockify task]}.
+        /notion/move {notion: "GEN-<n>", to: backlog|progress|done}: a ticket was moved to that column. Applies the rules
+          (I'm assigned: In progress when it was Backlog / Not started / Blocked, not for is_weekly ones;
+          I'm the reviewer: back to Backlog = In progress when it was In review). For done nothing changes, the reply has
+          the suggested status: is_weekly = "" (leave it), with a reviewer = In review, else Done; I'm the reviewer: Done.
+          Replies {role, status: its Notion status now, changed, suggest}.
+        /notion/status {notion, status: Done | In review}: set it.
+        /notion/add {title, notion}: add a ticket by hand for that Notion ticket, with its priority, into In progress if
+          I'm assigned and it is In progress, else Backlog; a Backlog one I'm assigned to is set to Not started. Linked to
+          its Clockify task, or once that appears. Replies the task state.
+        /notion/create {title, prio, project: page id, parent: page id of one of its tickets or "" (= top level), due}:
+          create the Notion ticket (notion.create_task) and add it to Backlog; linked to its Clockify task once that
+          appears. Replies the task state."""
+        if not notion.enabled():
+            return self.send_json(400, {"error": "Notion is not set up"})
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        gen = str(body.get("notion"))
+        try:
+            if self.path == "/notion/sync":
+                if not sync_lock.acquire(blocking=False):
+                    return self.send_json(409, {"error": "a sync is already running"})
+                added, waiting = run_sync()
+                return self.send_json(200, {"added": added, "waiting": waiting})
+            if self.path == "/notion/create":
+                title, prio, due = " ".join(str(body.get("title") or "").split()), body.get("prio"), body.get("due") or ""
+                project = next((p for p in projects or [] if p["id"] == body.get("project")), None)
+                parent = body.get("parent") or ""
+                if not title or prio not in PRIOS or not project or not re.fullmatch(r"(\d{4}-\d{2}-\d{2})?", due) or \
+                        (parent and all(t["id"] != parent for t in project["tickets"])):
+                    return self.send_json(400, {"error": "bad request"})
+                n = notion.create_task(title, project["id"], parent, prio, due)
+                project["tickets"].append({"id": n["id"], "gen": n["gen"], "title": n["title"], "parent": parent})
+                with tasks_lock:
+                    tasks = read_tasks()
+                    tasks.append({"title": title, "prio": prio, "status": "backlog", "clockify": "", "notion": n["gen"],
+                                  "role": "assignee", "times": []})
+                    write_tasks(tasks)
+                if clockify.enabled():
+                    threading.Thread(target=link_when_ready, args=(n["gen"],), daemon=True).start()
+                return self.send_json(200, tasks_state())
+            if not re.fullmatch(r"[A-Z]+-\d+", gen):
+                return self.send_json(400, {"error": "bad request"})
+            if self.path == "/notion/move" and body.get("to") in ("backlog", "progress", "done"):
+                n, to, status = notion.get_task(gen), body["to"], None
+                if to == "progress" and n["role"] == "assignee" and not n["weekly"] and \
+                        n["status"] in ("Backlog", "Not started", "Blocked"):
+                    status = "In progress"
+                if to == "backlog" and n["role"] == "reviewer" and n["status"] == "In review":
+                    status = "In progress"
+                if status:
+                    notion.set_status(n["id"], status)
+                suggest = "" if to != "done" or not n["role"] else "Done" if n["role"] == "reviewer" else \
+                    "" if n["weekly"] else "In review" if n["reviewed"] else "Done"
+                return self.send_json(200, {"role": n["role"], "status": status or n["status"], "changed": bool(status),
+                                            "suggest": suggest})
+            if self.path == "/notion/add" and str(body.get("title") or "").strip():
+                n = notion.get_task(gen)
+                if any(t["notion"] == gen for t in read_tasks()):
+                    return self.send_json(409, {"error": "%s is already on the board" % gen})
+                if n["role"] == "assignee" and n["status"] == "Backlog":
+                    notion.set_status(n["id"], "Not started")
+                try:
+                    link = clockify_links().get(gen, ("", ""))[0] if clockify.enabled() else ""
+                except clockify.ClockifyError:
+                    link = ""  # linked by link_when_ready
+                with tasks_lock:
+                    tasks = read_tasks()
+                    tasks.append({"title": " ".join(body["title"].split()), "prio": n["prio"] if n["prio"] in PRIOS else "Medium",
+                                  "status": "progress" if n["role"] == "assignee" and n["status"] == "In progress" else "backlog",
+                                  "clockify": link, "notion": gen, "role": n["role"], "times": []})
+                    write_tasks(tasks)
+                if clockify.enabled() and not link:
+                    threading.Thread(target=link_when_ready, args=(gen,), daemon=True).start()
+                return self.send_json(200, tasks_state())
+            if self.path == "/notion/status" and body.get("status") in ("Done", "In review"):
+                n = notion.get_task(gen)
+                if n["status"] != body["status"]:
+                    notion.set_status(n["id"], body["status"])
+                return self.send_json(200, {"status": body["status"], "changed": n["status"] != body["status"]})
+            self.send_json(400, {"error": "bad request"})
+        except (notion.NotionError, clockify.ClockifyError) as e:
+            self.send_json(502, {"error": str(e)})
 
     def do_GET(self):
         if self.path == "/stream":
@@ -400,6 +646,23 @@ class Handler(BaseHTTPRequestHandler):
                 return
         elif self.path == "/tasks":
             self.send_json(200, tasks_state())
+        elif self.path == "/notion/tickets":
+            if not notion.enabled():
+                return self.send_json(400, {"error": "Notion is not set up"})
+            if picks is None:
+                load_picks()
+            self.send_json(200 if picks is not None else 502,
+                           {"tickets": picks or [], "projects": projects or [], "error": notion_error})
+        elif self.path.startswith("/notion/people?"):  # ?GEN-<n>: who is on that ticket
+            gen = self.path.partition("?")[2]
+            if not notion.enabled() or not re.fullmatch(r"[A-Z]+-\d+", gen):
+                return self.send_json(400, {"error": "bad request"})
+            try:
+                n = notion.get_task(gen)
+                self.send_json(200, {"assignees": n["assignees"], "reviewers": n["reviewers"], "status": n["status"],
+                                     "prs": notion.pr_urls(n["prs"])})
+            except notion.NotionError as e:
+                self.send_json(502, {"error": str(e)})
         elif self.path.split("?")[0] == "/clockify":
             if not clockify.enabled():
                 return self.send_json(200, {"enabled": False, "projects": []})
@@ -423,6 +686,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    migrate_md()
     threading.Thread(target=sampler, daemon=True).start()
     threading.Thread(target=archiver, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)

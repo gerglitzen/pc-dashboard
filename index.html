@@ -112,9 +112,21 @@
   .add { width: 100%; margin: 6px 0 2px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--text-primary); background: transparent;
     border: 1px dashed var(--track); border-radius: 10px; outline: none; -webkit-appearance: none; transition: border-color .2s; }
   .add:focus { border-style: solid; border-color: var(--series-1); }
-  #add-prio { display: none; align-items: center; margin: 6px 0 2px; font-size: 14px; color: var(--text-secondary); }
-  #add-prio.show { display: flex; }
-  #add-prio .btn { flex: 1; margin-left: 6px; padding: 7px 0; border-left: 4px solid var(--pc); }
+  .addbar { display: flex; }
+  .addbar .add { flex: 1; text-align: left; cursor: pointer; }
+  .addbar .add + .add { margin-left: 8px; }
+  #new { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 15; display: none; align-items: flex-start; justify-content: center;
+    padding: 60px 16px 0; background: rgba(0,0,0,.45); }
+  #new.show { display: flex; }
+  #new .box { width: 540px; max-width: 100%; padding: 20px; border-radius: 16px; background: var(--surface-1); box-shadow: 0 24px 60px rgba(0,0,0,.4); }
+  #new .label { margin: 16px 0 8px; }
+  #new input, #new select { font: inherit; font-size: 16px; color: var(--text-primary); background: var(--surface-0);
+    border: 1px solid var(--track); border-radius: 8px; padding: 7px 8px; }
+  #new input { -webkit-appearance: none; }
+  #new select, #n-title { display: block; width: 100%; margin-bottom: 8px; }
+  #n-prio .btn { margin-right: 6px; border-left: 4px solid var(--pc); }
+  #n-due-w span { margin-right: 8px; color: var(--text-secondary); }
+  .card .pj.personal { font-size: 12px; letter-spacing: .04em; }
   .card { position: relative; margin-top: 8px; padding: 11px 12px; border-radius: 10px; background: var(--card); box-shadow: var(--shadow);
     font-size: 15px; line-height: 1.3; word-wrap: break-word; cursor: grab; -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; transition: transform .15s, box-shadow .2s; }
@@ -125,6 +137,7 @@
   .card.run { box-shadow: 0 0 0 1.5px var(--series-1), var(--shadow); }
   .card.has-play { padding-right: 52px; }
   .card .cfn { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+  .card .pj { color: var(--text-muted); }
   .card .m { font-size: 13px; color: var(--text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
   .card.run .m { color: var(--series-1); }
   .play { position: absolute; right: 10px; top: 50%; margin-top: -17px; width: 34px; height: 34px; border-radius: 50%; border: 0;
@@ -144,6 +157,11 @@
     box-shadow: 0 24px 60px rgba(0,0,0,.4); transform: translateY(24px) scale(.97); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
   #sheet.show .box { transform: none; }
   #sheet .label { margin: 18px 0 8px; }
+  #s-top { display: flex; justify-content: space-between; flex-wrap: wrap; }
+  #s-people { min-width: 150px; font-size: 15px; }
+  #s-people .label { margin-bottom: 4px; }
+  #s-people a { color: var(--series-1); }
+  #s-people .prs { margin-top: 16px; line-height: 1.6; }
   #s-move .btn, #s-prio .btn { margin: 0 6px 6px 0; }
   #s-prio .btn { border-left: 4px solid var(--pc); }
   #sheet input { font: inherit; font-size: 16px; color: var(--text-primary); background: var(--surface-0);
@@ -165,6 +183,14 @@
   .timebar > * { margin: 0 8px 8px 0; }
   #s-timer { display: flex; align-items: center; }
   #s-timer svg { margin: 0 8px 0 0; }
+  #tbar .btn { padding: 4px 10px; }
+  #filter .btn { margin-left: 4px; }
+  #ask { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 20; display: none; align-items: center; justify-content: center;
+    padding: 0 16px; background: rgba(0,0,0,.45); }
+  #ask.show { display: flex; }
+  #ask .box { width: 440px; max-width: 100%; padding: 20px; border-radius: 16px; background: var(--surface-1); box-shadow: 0 24px 60px rgba(0,0,0,.4); }
+  #ask .btn { margin: 14px 6px 0 0; }
+  #ask .btn:disabled { opacity: .4; }
   #toast { position: fixed; left: 50%; bottom: 24px; z-index: 30; padding: 11px 18px; border-radius: 10px; font-size: 14px;
     background: var(--text-primary); color: var(--surface-0); box-shadow: 0 8px 24px rgba(0,0,0,.3);
     transform: translate(-50%, 100px); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
@@ -175,7 +201,7 @@
 <header>
   <div class="group"><span><i class="dot" id="conn"></i><b id="host">—</b></span><span id="uptime"></span></div>
   <div class="group" id="tabs"><i></i><button class="on" type="button">System</button><button type="button">Tasks</button></div>
-  <div class="group"><span id="bat"></span><span id="clock"></span><button id="theme" type="button"></button></div>
+  <div class="group"><span id="tbar" style="display:none"><span id="filter"><button class="btn" type="button" data-f="all">All</button><button class="btn" type="button" data-f="assignee">Assigned</button><button class="btn" type="button" data-f="reviewer">Review</button></span><button class="btn" id="sync" type="button">⟳ Notion</button></span><span id="bat"></span><span id="clock"></span><button id="theme" type="button"></button></div>
 </header>
 <div id="pages"><div id="track">
 <main class="page">
@@ -231,8 +257,7 @@
 </main>
 <section class="page" id="tasks">
   <div class="tile"><div class="col-head"><span>Backlog<span class="count" id="n-backlog"></span></span></div>
-    <input class="add" id="add" type="text" placeholder="+ Add a task" autocomplete="off">
-    <div id="add-prio">Priority<button class="btn" type="button" data-p="High" style="--pc:var(--critical)">High</button><button class="btn" type="button" data-p="Medium" style="--pc:var(--warning)">Medium</button><button class="btn" type="button" data-p="Low" style="--pc:var(--text-muted)">Low</button></div>
+    <div class="addbar"><button class="add" id="add-link" type="button">+ Add</button><button class="add" id="add-new" type="button">+ Create</button></div>
     <div class="list" id="l-backlog"></div></div>
   <div class="tile"><div class="col-head"><span>In progress<span class="count" id="n-progress"></span></span><span class="tot" id="t-progress"></span></div>
     <div class="list" id="l-progress"></div></div>
@@ -242,10 +267,12 @@
 </div></div>
 <div id="sheet"><div class="box">
   <input id="s-title" type="text">
-  <div class="label">Move to</div>
-  <div id="s-move"></div>
-  <div class="label">Priority</div>
-  <div id="s-prio"></div>
+  <div id="s-top"><div>
+    <div class="label">Move to</div>
+    <div id="s-move"></div>
+    <div class="label">Priority</div>
+    <div id="s-prio"></div>
+  </div><div id="s-people"></div></div>
   <div id="s-cf" style="display:none"><div class="label">Clockify</div>
     <select id="s-proj"></select><select id="s-task"></select><div class="sub" id="cf-err"></div></div>
   <div class="label"><span>Time</span><span id="s-total"></span></div>
@@ -254,6 +281,15 @@
   <div class="timebar"><input id="s-from" type="time"><span>–</span><input id="s-to" type="time"><button class="btn" id="s-addtime" type="button">Add time</button></div>
   <div class="row" style="margin-top:14px"><button class="btn" id="s-del" type="button" style="color:var(--critical)">Delete</button><button class="btn on" id="s-close" type="button">Done</button></div>
 </div></div>
+<div id="new"><div class="box">
+  <input id="n-title" type="text" placeholder="Name (also the Clockify description)" autocomplete="off">
+  <div id="n-prio-w"><div class="label">Priority</div><div id="n-prio"><button class="btn" type="button" data-p="High" style="--pc:var(--critical)">High</button><button class="btn" type="button" data-p="Medium" style="--pc:var(--warning)">Medium</button><button class="btn" type="button" data-p="Low" style="--pc:var(--text-muted)">Low</button></div></div>
+  <div id="n-notion"><div class="label" id="n-head"></div><select id="n-proj"></select><select id="n-task"></select><div id="n-tree"></div>
+    <div id="n-due-w" class="timebar"><span>Due</span><input id="n-due" type="date"></div></div>
+  <div class="row" style="margin-top:14px"><button class="btn" id="n-skip" type="button">Skip Notion (personal)</button>
+    <span><button class="btn" id="n-cancel" type="button">Cancel</button> <button class="btn on" id="n-ok" type="button"></button></span></div>
+</div></div>
+<div id="ask"><div class="box"><div id="ask-t"></div><div id="ask-b"><button class="btn" type="button" data-st="Done">Done</button><button class="btn" type="button" data-st="In review">In review</button><button class="btn" type="button" data-st="">Leave as is</button></div></div></div>
 <div id="toast"></div>
 <script>
 (function () {
@@ -424,6 +460,7 @@
     page = p; track.className = ''; document.body.className = ''; place(null);
     tabBtns[0].className = p ? '' : 'on'; tabBtns[1].className = p ? 'on' : '';
     if (p) loadTasks();
+    $('tbar').style.display = p && notionOn ? '' : 'none';
     stream(!p); // stats are only needed on the System page
   }
   tabBtns[0].onclick = function () { show(0); }; tabBtns[1].onclick = function () { show(1); };
@@ -453,12 +490,15 @@
   });
   window.addEventListener('resize', function () { place(null); });
 
-  // ---- Tasks: stored by the server in a markdown file ----
+  // ---- Tasks: stored by the server in a JSON file ----
   // task = {title, status: 'backlog'|'progress'|'done', prio: 'High'|'Medium'|'Low', clockify: 'projectId/taskId' or '',
-  //         times: [[start, end, entryId, date]]}
+  //         notion: 'GEN-<n>' or '' (its Notion ticket), role: 'assignee'|'reviewer'|'' (mine on it), times: [[start, end, entryId, date]]}
   // times are 'H:MM'; an empty end means the timer is running; entryId = its Clockify time entry ('' = not logged; set by the server);
   // date = 'YYYY-MM-DD' the range started. The board shows only today's ranges (and a running one); the sheet can show all.
   var tasks = [], version = null, cur = null, busy = null, queued = false;
+  var notionOn = false, notionErr = null, askGen = null; // Notion set up; last sync error; the ticket the Done dialog is about
+  var filter = 'all'; // show all tickets, only mine ('assignee', also the ones without a Notion ticket) or the ones I review
+  try { filter = localStorage.getItem('filter') || 'all'; } catch (e) {}
   var cf = null, cfTask = {}, cfErr = null, sheetProj = ''; // Clockify projects (null = off), taskId -> [project, task]
   var editIdx = null; // index of the time range being edited in place in the sheet
   var showAll = false; // the sheet lists every range, not only today's
@@ -486,11 +526,73 @@
     t.times.forEach(function (r) { if (!r[1]) r[1] = n; });
   }
   function moveTo(t, status, prio, before) { // before = task to insert above; none = bottom of the column
+    var from = t.status;
     if (status !== 'progress' && running(t)) stopTimer(t);
     t.status = status; if (prio) t.prio = prio;
     tasks.splice(tasks.indexOf(t), 1);
     if (before) tasks.splice(tasks.indexOf(before), 0, t); else tasks.push(t);
+    if (from !== status) notionMoved(t, status);
   }
+
+  // ---- Notion: the server applies the status rules of a move; a move to Done asks which status to set ----
+  function notionPost(path, body, ok, always) {
+    var x = new XMLHttpRequest();
+    x.open('POST', 'notion/' + path);
+    x.onload = function () {
+      if (always) always();
+      var r = JSON.parse(x.responseText);
+      if (x.status === 200) ok(r); else { toast('Notion: ' + r.error); if (path === 'move' && askGen === body.notion) closeAsk(); }
+    };
+    x.onerror = function () { if (always) always(); toast('Could not reach the PC — Notion not changed'); };
+    x.send(JSON.stringify(body));
+  }
+  function notionMoved(t, to) {
+    if (!notionOn || !t.notion) return;
+    var gen = t.notion;
+    if (to === 'done') openAsk(t);
+    notionPost('move', { notion: gen, to: to }, function (r) {
+      var o = tasks.filter(function (x) { return x.notion === gen; })[0];
+      if (o && r.role && o.role !== r.role) { o.role = r.role; save(); } // my role learned from Notion
+      if (r.changed) toast('Notion ' + gen + ' → ' + r.status);
+      if (to === 'done' && askGen === gen) askReady(r.suggest);
+    });
+  }
+  function askButtons() { return $('ask-b').querySelectorAll('.btn'); }
+  function openAsk(t) {
+    askGen = t.notion; $('ask-t').textContent = 'Set ' + t.notion + ' "' + t.title + '" in Notion to: (checking…)';
+    [].forEach.call(askButtons(), function (b) { b.disabled = true; b.className = 'btn'; });
+    $('ask').className = 'show';
+  }
+  function askReady(suggest) { // the suggested status is highlighted; any of them can be picked
+    $('ask-t').textContent = $('ask-t').textContent.replace(' (checking…)', '');
+    [].forEach.call(askButtons(), function (b) { b.disabled = false; b.className = 'btn' + (b.getAttribute('data-st') === suggest ? ' on' : ''); });
+  }
+  function closeAsk() { askGen = null; $('ask').className = ''; }
+  $('ask').onclick = function (e) { // a button, or the backdrop = leave as is
+    var st = e.target.getAttribute('data-st'), gen = askGen;
+    if (e.target !== this && (st === null || e.target.disabled)) return;
+    closeAsk();
+    if (st) notionPost('status', { notion: gen, status: st }, function (r) { toast('Notion ' + gen + (r.changed ? ' → ' : ' is already ') + r.status); });
+  };
+  function syncLabel() { $('sync').textContent = '⟳ Notion'; $('sync').disabled = false; }
+  $('sync').onclick = function () {
+    if (this.disabled) return;
+    this.disabled = true; this.textContent = 'Syncing…';
+    notionPost('sync', {}, function (r) {
+      toast('Notion: ' + (r.added ? r.added + ' added' : 'nothing new') + (r.waiting.length ? ', waiting for Clockify: ' + r.waiting.join(', ') : ''));
+      loadTasks();
+    }, syncLabel);
+  };
+  function renderFilter() {
+    [].forEach.call($('filter').querySelectorAll('.btn'), function (b) { b.className = 'btn' + (b.getAttribute('data-f') === filter ? ' on' : ''); });
+  }
+  $('filter').onclick = function (e) {
+    var f = e.target.getAttribute('data-f'); if (!f) return;
+    filter = f; try { localStorage.setItem('filter', f); } catch (er) {}
+    renderFilter(); renderTasks();
+  };
+  renderFilter();
+  function shown(t) { return filter === 'all' || (filter === 'reviewer') === (t.role === 'reviewer'); }
   function toggleTimer(t) {
     if (running(t)) stopTimer(t);
     else {
@@ -522,13 +624,15 @@
       } else markLogged(r.tasks);
       if (r.clockify_error && r.clockify_error !== cfErr) toast('Clockify: ' + r.clockify_error);
       cfErr = r.clockify_error;
+      if (r.notion_error && r.notion_error !== notionErr) toast('Notion ' + r.notion_error);
+      notionErr = r.notion_error; notionOn = r.notion; $('tbar').style.display = page && notionOn ? '' : 'none';
       if (cur) renderSheet();
       if (queued) { queued = false; save(); }
     };
     x.onerror = function () { busy = null; tasksOk = false; queued = false; toast('Could not reach the PC — change not saved'); };
     x.send(body ? JSON.stringify(body) : null);
   }
-  function loadTasks() { if (!busy && !cur && !drag && document.activeElement !== $('add')) req('GET'); }
+  function loadTasks() { if (!busy && !cur && !drag && $('new').className !== 'show') req('GET'); }
   function save() { // a save during another one waits for its new version instead of getting a conflict
     if (busy === 'PUT') queued = true; else req('PUT', { version: version, tasks: tasks });
     renderTasks(); if (cur) renderSheet();
@@ -549,16 +653,18 @@
       if (!r.enabled) return;
       cf = r.projects; cfTask = {};
       cf.forEach(function (p) { p.tasks.forEach(function (t) { cfTask[t.id] = [p, t]; }); });
-      $('s-cf').style.display = ''; renderTasks(); if (cur) renderClockify(cur); // not renderSheet: keep what is being typed
+      renderTasks(); if (cur) { $('s-cf').style.display = linkable(cur) ? '' : 'none'; renderClockify(cur); } // not renderSheet: keep what is being typed
     };
     x.send();
   }
 
   function card(t) {
     var i = tasks.indexOf(t), run = running(t), play = t.status === 'progress';
-    var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title);
-    var link = t.clockify && cfTask[t.clockify.split('/')[1]];
-    if (link) h += '<div class="cfn">' + esc(link[1].name) + '</div>';
+    var link = t.clockify && cfTask[t.clockify.split('/')[1]], pj = link && link[0].name.replace(/^\d+_/, ''); // project without its code
+    var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title) +
+            (pj ? ' <span class="pj">(' + esc(pj) + ')</span>' : personal(t) ? ' <span class="pj personal">(PERSONAL)</span>' : '');
+    if (personal(t)) h += '<div class="cfn">Not logged to Clockify</div>';
+    else if (link || t.notion) h += '<div class="cfn">' + (t.role === 'reviewer' ? 'Review · ' : '') + esc((link ? link[1].name : t.notion).replace(/^GEN-/, '')) + '</div>';
     var tt = todays(t);
     if (tt.length)
       h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(tt)) + ' · ' +
@@ -572,11 +678,12 @@
     ['backlog', 'progress'].forEach(function (s) { // grouped by priority
       PRIOS.forEach(function (p) {
         h[s] += '<div class="zone" data-s="' + s + '" data-p="' + p + '"><span class="prio status" style="--sc:var(' + PRIO_COLOR[p] + ')">' + p + '</span>';
-        tasks.forEach(function (t) { if (t.status === s && t.prio === p) h[s] += card(t); });
+        tasks.forEach(function (t) { if (t.status === s && t.prio === p && shown(t)) h[s] += card(t); });
         h[s] += '</div>';
       });
     });
     tasks.forEach(function (t) {
+      if (!shown(t)) return;
       n[t.status]++;
       if (t.status === 'done') h.done += card(t);
       if (t.status !== 'backlog') tot[t.status] += spent(todays(t));
@@ -585,19 +692,110 @@
     $('t-progress').textContent = tot.progress ? fmtMin(tot.progress) : '';
     $('t-done').textContent = tot.done ? fmtMin(tot.done) : '';
   }
-  // Adding a task: Enter in the input, then pick its priority
-  var newTitle = null;
-  function askPrio(title) { newTitle = title; $('add-prio').className = title ? 'show' : ''; }
-  $('add').onkeydown = function (e) {
-    if (e.keyCode === 27) askPrio(null);
-    if (e.keyCode !== 13 || !this.value.trim()) return;
-    askPrio(this.value.trim()); this.blur();
+  // ---- Adding a ticket: + Add = for an existing Notion ticket, + Create = a new Notion ticket, or a personal one ----
+  // (personal = no Notion ticket, never linked to Clockify; its time is only tracked on the board)
+  var newMode = null, newPrio = 'Medium', picks = null, owned = null; // my Notion tickets to add / projects I own (server cache)
+  var newPath = []; // + Create: the ticket picked on each level of the project's tree; the new ticket goes under the last one
+  function personal(t) { return !t.clockify && !t.notion; }
+  function linkable(t) { return !personal(t); } // personal tickets aren't linked to Clockify
+  function openNew(mode) {
+    newMode = mode; newPrio = 'Medium'; newPath = [];
+    $('n-title').value = ''; $('n-due').value = today();
+    $('n-prio-w').style.display = $('n-due-w').style.display = $('n-skip').style.display = mode === 'create' ? '' : 'none';
+    $('n-notion').style.display = notionOn ? '' : 'none';
+    $('n-head').textContent = mode === 'create' ? 'New Notion ticket: project, then where in its tree' : 'Notion ticket';
+    $('n-ok').textContent = mode === 'create' ? (notionOn ? 'Create' : 'Add') : 'Add';
+    renderNew('');
+    $('new').className = 'show'; $('n-title').focus();
+    if (notionOn) loadPicks();
+  }
+  function closeNew() { newMode = null; $('new').className = ''; if (document.activeElement) document.activeElement.blur(); }
+  function loadPicks() {
+    var x = new XMLHttpRequest();
+    x.open('GET', 'notion/tickets');
+    x.onload = function () {
+      var r = JSON.parse(x.responseText);
+      if (x.status !== 200) return toast('Notion: ' + r.error);
+      picks = r.tickets; owned = r.projects;
+      if (newMode) renderNew($('n-proj').value);
+    };
+    x.send();
+  }
+  function renderNew(proj) {
+    [].forEach.call($('n-prio').querySelectorAll('.btn'), function (b) { b.className = 'btn' + (b.getAttribute('data-p') === newPrio ? ' on' : ''); });
+    var h = '<option value="">' + (picks ? '— Project —' : 'Loading Notion…') + '</option>', t = '', tree = '';
+    if (newMode === 'create') { // projects I own, then one select per level of its ticket tree: "New ticket" here, or go deeper
+      (owned || []).forEach(function (p) { h += '<option value="' + esc(p.id) + '"' + (p.id === proj ? ' selected' : '') + '>' + esc(p.name) + '</option>'; });
+      var p = (owned || []).filter(function (x) { return x.id === proj; })[0];
+      if (p) for (var lvl = 0; lvl <= newPath.length; lvl++) {
+        var under = lvl ? newPath[lvl - 1] : '';
+        tree += '<select data-lvl="' + lvl + '"><option value="">New ticket' + (lvl ? ' here' : ' (top level)') + '</option>';
+        p.tickets.filter(function (x) { return x.parent === under; }).sort(function (a, b) { return a.title.localeCompare(b.title); }).forEach(function (x) {
+          tree += '<option value="' + esc(x.id) + '"' + (x.id === newPath[lvl] ? ' selected' : '') + '>' + esc(x.title) + ' (' + esc(x.gen.replace(/^GEN-/, '')) + ')</option>';
+        });
+        tree += '</select>';
+      }
+    } else { // my tickets that aren't on the board yet, named like their Clockify task
+      var on = {}, projs = [];
+      tasks.forEach(function (x) { if (x.notion) on[x.notion] = 1; });
+      var free = (picks || []).filter(function (n) { return !on[n.gen]; });
+      free.forEach(function (n) { if (projs.indexOf(n.project) < 0) projs.push(n.project); });
+      projs.sort().forEach(function (x) { h += '<option value="' + esc(x) + '"' + (x === proj ? ' selected' : '') + '>' + esc(x) + '</option>'; });
+      if (proj) {
+        t = '<option value="">— Ticket —</option>';
+        free.filter(function (n) { return n.project === proj; }).sort(function (a, b) { return a.label.localeCompare(b.label); }).forEach(function (n) {
+          t += '<option value="' + esc(n.gen) + '">' + esc(n.gen.replace(/^GEN-/, '') + ':' + n.label + ' · ' + n.status + (n.role === 'reviewer' ? ' · Review' : '')) + '</option>';
+        });
+      }
+    }
+    $('n-proj').innerHTML = h; $('n-task').innerHTML = t; $('n-task').disabled = !t;
+    $('n-task').style.display = newMode === 'create' ? 'none' : ''; $('n-tree').innerHTML = tree;
+  }
+  function postNew(path, body) {
+    $('n-ok').disabled = true;
+    var x = new XMLHttpRequest();
+    x.open('POST', 'notion/' + path);
+    x.onload = function () {
+      $('n-ok').disabled = false;
+      var r = JSON.parse(x.responseText);
+      if (x.status !== 200) return toast('Notion: ' + r.error);
+      closeNew(); version = r.version; tasks = r.tasks; renderTasks();
+      if (path === 'create') toast('Notion ' + r.tasks[r.tasks.length - 1].notion + ' created, waiting for its Clockify task');
+    };
+    x.onerror = function () { $('n-ok').disabled = false; toast('Could not reach the PC — not added'); };
+    x.send(JSON.stringify(body));
+  }
+  function addPersonal(title) {
+    tasks.push({ title: title, status: 'backlog', prio: newPrio, clockify: '', notion: '', role: '', times: [] });
+    closeNew(); save();
+  }
+  $('add-link').onclick = function () { if (notionOn) openNew('add'); else toast('Notion is not set up'); };
+  $('add-new').onclick = function () { openNew('create'); };
+  $('n-prio').onclick = function (e) { var p = e.target.getAttribute('data-p'); if (p) { newPrio = p; renderNew($('n-proj').value); } };
+  $('n-proj').onchange = function () { newPath = []; renderNew(this.value); };
+  $('n-tree').onchange = function (e) { // picking on a level cuts the deeper levels and opens the next one
+    var lvl = +e.target.getAttribute('data-lvl');
+    newPath = newPath.slice(0, lvl); if (e.target.value) newPath.push(e.target.value);
+    renderNew($('n-proj').value);
   };
-  $('add').oninput = function () { askPrio(null); };
-  $('add-prio').onclick = function (e) {
-    var p = e.target.getAttribute('data-p'); if (!p || !newTitle) return;
-    tasks.push({ title: newTitle, status: 'backlog', prio: p, clockify: '', times: [] });
-    $('add').value = ''; askPrio(null); save();
+  $('n-cancel').onclick = closeNew;
+  $('new').onclick = function (e) { if (e.target === this) closeNew(); };
+  $('n-title').onkeydown = function (e) { if (e.keyCode === 27) closeNew(); };
+  $('n-skip').onclick = function () {
+    var title = $('n-title').value.trim();
+    if (!title) return toast('Type a name first');
+    addPersonal(title);
+  };
+  $('n-ok').onclick = function () {
+    var title = $('n-title').value.trim(), proj = $('n-proj').value, sel = $('n-task').value;
+    if (!title) return toast('Type a name first');
+    if (newMode === 'create' && !notionOn) return addPersonal(title);
+    if (newMode === 'create') {
+      if (!proj) return toast('Pick a project — or Skip Notion');
+      return postNew('create', { title: title, prio: newPrio, project: proj, parent: newPath[newPath.length - 1] || '', due: $('n-due').value });
+    }
+    if (!proj || !sel) return toast('Pick a project and a ticket');
+    postNew('add', { title: title, notion: sel });
   };
 
   // ---- Drag & drop: long-press a card (touch) or drag it (mouse), drop it on any column / priority ----
@@ -704,7 +902,27 @@
   };
 
   // ---- Ticket sheet ----
-  function openSheet(t) { cur = t; editIdx = null; showAll = false; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; if (cf) loadClockify(true); }
+  function openSheet(t) { cur = t; editIdx = null; showAll = false; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; if (cf) loadClockify(true); loadPeople(t); }
+  function loadPeople(t) { // who is assigned and who reviews its Notion ticket, loaded each time the sheet opens
+    $('s-people').innerHTML = '';
+    if (!notionOn || !t.notion) return;
+    $('s-people').innerHTML = '<div class="label">Notion ' + esc(t.notion) + '</div><div class="sub">Loading…</div>';
+    var x = new XMLHttpRequest();
+    x.open('GET', 'notion/people?' + t.notion);
+    x.onload = function () {
+      if (cur !== t) return;
+      var r = JSON.parse(x.responseText);
+      if (x.status !== 200) { $('s-people').innerHTML = '<div class="label">Notion ' + esc(t.notion) + '</div><div class="sub">' + esc(r.error) + '</div>'; return; }
+      function who(names) { return names.length ? names.map(esc).join('<br>') : '<span class="sub">—</span>'; }
+      $('s-people').innerHTML = '<div class="label">Assignee</div><div>' + who(r.assignees) + '</div>' +
+        '<div class="label">Reviewer</div><div>' + who(r.reviewers) + '</div>' +
+        (r.prs.length ? '<div class="prs">' + r.prs.map(function (u) { // GitHub Pull Requests: "PR #347"
+          var m = u.match(/\/pull\/(\d+)/);
+          return '<div><a href="' + esc(u) + '" target="_blank" rel="noopener">PR' + (m ? ' #' + m[1] : '') + '</a></div>';
+        }).join('') + '</div>' : '');
+    };
+    x.send();
+  }
   function closeSheet() { cur = null; $('sheet').className = ''; if (document.activeElement) document.activeElement.blur(); }
   function renderSheet() {
     var t = cur, h = '';
@@ -737,7 +955,7 @@
              '</span>' + (lg ? '<span class="lg">' + lg + '</span>' : '') + '</span><span>' + del + '</span></li>';
     });
     $('s-times').innerHTML = h;
-    if (cf) renderClockify(t);
+    if (cf) { $('s-cf').style.display = linkable(t) ? '' : 'none'; renderClockify(t); }
     var all = spent(t.times), older = t.times.length - tt.length;
     $('s-total').textContent = !t.times.length ? '' : showAll || !older ? 'Total ' + fmtMin(all) : 'Today ' + fmtMin(spent(tt)) + ' · Total ' + fmtMin(all);
     $('s-all').textContent = showAll ? 'Show today' : 'Show all (' + older + ' earlier)';
@@ -761,7 +979,7 @@
     h = '<option value="">' + (sheetProj ? '— Pick a task —' : '') + '</option>';
     cf.forEach(function (p) {
       if (p.id === sheetProj) p.tasks.forEach(function (x) {
-        h += '<option value="' + x.id + '"' + (x.id === tid ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+        h += '<option value="' + x.id + '"' + (x.id === tid ? ' selected' : '') + '>' + esc(x.name.replace(/^GEN-/, '')) + '</option>';
       });
     });
     if (tid && !cfTask[tid] && sheetProj === t.clockify.split('/')[0]) h += '<option value="' + esc(tid) + '" selected>(task not available)</option>';
@@ -778,6 +996,8 @@
     if (link && !cur.clockify && old &&
         !confirm('This ticket already has ' + old + ' time range(s) that are not in Clockify. Linking logs them too, on their own dates. Link it?'))
       return renderSheet();
+    var gen = link && /^([A-Z]+-\d+):/.exec(cfTask[this.value][1].name); // a Clockify task name starts with its Notion ticket
+    if (gen && gen[1] !== cur.notion) { cur.notion = gen[1]; cur.role = ''; }
     cur.clockify = link; save();
   };
   $('s-move').onclick = function (e) {
