@@ -79,13 +79,13 @@ For tickets the daily sync doesn't bring (e.g. no due date yet): tap **+ Add**, 
 
 ### Creating a Notion ticket (+ Create)
 
-Tap **+ Create**, type a name, pick the priority, the **project** and **where** in it, check the due date, tap *Create*.
+Tap **+ Create**, type a name, pick the priority, the **project** and **where** in its ticket tree, check the due date, tap *Create*.
 
 - **Projects:** only the *In progress* projects you own (only the owner creates tickets in a project).
-- **Where:** *Root* creates a new milestone; picking a milestone creates a task under it (our hierarchy is Project → Milestone → Task, so nothing goes under a task).
-- The Notion ticket gets: your name as Task Name, you as Assignee, the priority, the project and milestone, the due date (today by default, can be changed or cleared), status **Not started** (so its Clockify task gets created), and an empty *Description* section.
+- **Where:** one list per level of the project's tree (open tickets only). Each list starts with *New ticket* (the default): leave it there to create the ticket on that level, or pick a ticket to open the next level under it. E.g. `2579_OE_AI_IP` → *Common Development* → *Brian as an MCP* → *mcp integration* → *New ticket here* creates the ticket under *mcp integration*.
+- The Notion ticket gets: your name as Task Name, you as Assignee, the priority, the project and parent ticket, the due date (today by default, can be changed or cleared), status **Not started** (so its Clockify task gets created), and an empty *Description* section.
 - The board ticket goes to **Backlog** and is linked to its Clockify task once that appears (within a minute; otherwise at the next sync).
-- The project and milestone lists are loaded with the ticket list (daily, on start and by ⟳ Notion); a milestone you create is in the list right away.
+- The projects and their trees are loaded with the ticket list (daily, on start and by ⟳ Notion); a ticket you create is in the tree right away.
 - **Skip Notion (personal)** adds a [personal ticket](#the-board) with the name and priority instead.
 
 ### Moving tickets

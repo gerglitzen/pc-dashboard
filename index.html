@@ -284,7 +284,7 @@
 <div id="new"><div class="box">
   <input id="n-title" type="text" placeholder="Name (also the Clockify description)" autocomplete="off">
   <div id="n-prio-w"><div class="label">Priority</div><div id="n-prio"><button class="btn" type="button" data-p="High" style="--pc:var(--critical)">High</button><button class="btn" type="button" data-p="Medium" style="--pc:var(--warning)">Medium</button><button class="btn" type="button" data-p="Low" style="--pc:var(--text-muted)">Low</button></div></div>
-  <div id="n-notion"><div class="label" id="n-head"></div><select id="n-proj"></select><select id="n-task"></select>
+  <div id="n-notion"><div class="label" id="n-head"></div><select id="n-proj"></select><select id="n-task"></select><div id="n-tree"></div>
     <div id="n-due-w" class="timebar"><span>Due</span><input id="n-due" type="date"></div></div>
   <div class="row" style="margin-top:14px"><button class="btn" id="n-skip" type="button">Skip Notion (personal)</button>
     <span><button class="btn" id="n-cancel" type="button">Cancel</button> <button class="btn on" id="n-ok" type="button"></button></span></div>
@@ -695,14 +695,15 @@
   // ---- Adding a ticket: + Add = for an existing Notion ticket, + Create = a new Notion ticket, or a personal one ----
   // (personal = no Notion ticket, never linked to Clockify; its time is only tracked on the board)
   var newMode = null, newPrio = 'Medium', picks = null, owned = null; // my Notion tickets to add / projects I own (server cache)
+  var newPath = []; // + Create: the ticket picked on each level of the project's tree; the new ticket goes under the last one
   function personal(t) { return !t.clockify && !t.notion; }
   function linkable(t) { return !personal(t); } // personal tickets aren't linked to Clockify
   function openNew(mode) {
-    newMode = mode; newPrio = 'Medium';
+    newMode = mode; newPrio = 'Medium'; newPath = [];
     $('n-title').value = ''; $('n-due').value = today();
     $('n-prio-w').style.display = $('n-due-w').style.display = $('n-skip').style.display = mode === 'create' ? '' : 'none';
     $('n-notion').style.display = notionOn ? '' : 'none';
-    $('n-head').textContent = mode === 'create' ? 'New Notion ticket: project, then where (a milestone or the root)' : 'Notion ticket';
+    $('n-head').textContent = mode === 'create' ? 'New Notion ticket: project, then where in its tree' : 'Notion ticket';
     $('n-ok').textContent = mode === 'create' ? (notionOn ? 'Create' : 'Add') : 'Add';
     renderNew('');
     $('new').className = 'show'; $('n-title').focus();
@@ -722,13 +723,17 @@
   }
   function renderNew(proj) {
     [].forEach.call($('n-prio').querySelectorAll('.btn'), function (b) { b.className = 'btn' + (b.getAttribute('data-p') === newPrio ? ' on' : ''); });
-    var h = '<option value="">' + (picks ? '— Project —' : 'Loading Notion…') + '</option>', t = '';
-    if (newMode === 'create') { // projects I own, then the root or one of its milestones
+    var h = '<option value="">' + (picks ? '— Project —' : 'Loading Notion…') + '</option>', t = '', tree = '';
+    if (newMode === 'create') { // projects I own, then one select per level of its ticket tree: "New ticket" here, or go deeper
       (owned || []).forEach(function (p) { h += '<option value="' + esc(p.id) + '"' + (p.id === proj ? ' selected' : '') + '>' + esc(p.name) + '</option>'; });
       var p = (owned || []).filter(function (x) { return x.id === proj; })[0];
-      if (p) {
-        t = '<option value="">— Where —</option><option value="root">Root (a new milestone)</option>';
-        p.milestones.forEach(function (m) { t += '<option value="' + esc(m.id) + '">' + esc(m.title) + ' (' + esc(m.gen.replace(/^GEN-/, '')) + ')</option>'; });
+      if (p) for (var lvl = 0; lvl <= newPath.length; lvl++) {
+        var under = lvl ? newPath[lvl - 1] : '';
+        tree += '<select data-lvl="' + lvl + '"><option value="">New ticket' + (lvl ? ' here' : ' (top level)') + '</option>';
+        p.tickets.filter(function (x) { return x.parent === under; }).sort(function (a, b) { return a.title.localeCompare(b.title); }).forEach(function (x) {
+          tree += '<option value="' + esc(x.id) + '"' + (x.id === newPath[lvl] ? ' selected' : '') + '>' + esc(x.title) + ' (' + esc(x.gen.replace(/^GEN-/, '')) + ')</option>';
+        });
+        tree += '</select>';
       }
     } else { // my tickets that aren't on the board yet, named like their Clockify task
       var on = {}, projs = [];
@@ -744,6 +749,7 @@
       }
     }
     $('n-proj').innerHTML = h; $('n-task').innerHTML = t; $('n-task').disabled = !t;
+    $('n-task').style.display = newMode === 'create' ? 'none' : ''; $('n-tree').innerHTML = tree;
   }
   function postNew(path, body) {
     $('n-ok').disabled = true;
@@ -766,7 +772,12 @@
   $('add-link').onclick = function () { if (notionOn) openNew('add'); else toast('Notion is not set up'); };
   $('add-new').onclick = function () { openNew('create'); };
   $('n-prio').onclick = function (e) { var p = e.target.getAttribute('data-p'); if (p) { newPrio = p; renderNew($('n-proj').value); } };
-  $('n-proj').onchange = function () { renderNew(this.value); };
+  $('n-proj').onchange = function () { newPath = []; renderNew(this.value); };
+  $('n-tree').onchange = function (e) { // picking on a level cuts the deeper levels and opens the next one
+    var lvl = +e.target.getAttribute('data-lvl');
+    newPath = newPath.slice(0, lvl); if (e.target.value) newPath.push(e.target.value);
+    renderNew($('n-proj').value);
+  };
   $('n-cancel').onclick = closeNew;
   $('new').onclick = function (e) { if (e.target === this) closeNew(); };
   $('n-title').onkeydown = function (e) { if (e.keyCode === 27) closeNew(); };
@@ -779,9 +790,12 @@
     var title = $('n-title').value.trim(), proj = $('n-proj').value, sel = $('n-task').value;
     if (!title) return toast('Type a name first');
     if (newMode === 'create' && !notionOn) return addPersonal(title);
-    if (!proj || !sel) return toast(newMode === 'create' ? 'Pick a project and where to create it — or Skip Notion' : 'Pick a project and a ticket');
-    if (newMode === 'add') postNew('add', { title: title, notion: sel });
-    else postNew('create', { title: title, prio: newPrio, project: proj, parent: sel === 'root' ? '' : sel, due: $('n-due').value });
+    if (newMode === 'create') {
+      if (!proj) return toast('Pick a project — or Skip Notion');
+      return postNew('create', { title: title, prio: newPrio, project: proj, parent: newPath[newPath.length - 1] || '', due: $('n-due').value });
+    }
+    if (!proj || !sel) return toast('Pick a project and a ticket');
+    postNew('add', { title: title, notion: sel });
   };
 
   // ---- Drag & drop: long-press a card (touch) or drag it (mouse), drop it on any column / priority ----

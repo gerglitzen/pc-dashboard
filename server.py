@@ -51,7 +51,7 @@ clockify_error = None  # last Clockify logging error, shown on the board
 notion_error = None  # last Notion sync error, shown on the board
 sync_lock = threading.Lock()  # one Notion sync at a time (it may wait a minute for Clockify tasks)
 picks = None  # my Notion tickets to add by hand (notion.pickable), loaded at start and by every sync
-projects = None  # the In progress projects I own with their milestones, to create tickets in (notion.my_projects); same
+projects = None  # the In progress projects I own with their open tickets, to create tickets in (notion.my_projects); same
 
 cond = threading.Condition()
 latest = "{}"
@@ -556,7 +556,7 @@ class Handler(BaseHTTPRequestHandler):
         /notion/add {title, notion}: add a ticket by hand for that Notion ticket, with its priority, into In progress if
           I'm assigned and it is In progress, else Backlog; a Backlog one I'm assigned to is set to Not started. Linked to
           its Clockify task, or once that appears. Replies the task state.
-        /notion/create {title, prio, project: page id, parent: milestone page id or "" (= a new milestone), due}:
+        /notion/create {title, prio, project: page id, parent: page id of one of its tickets or "" (= top level), due}:
           create the Notion ticket (notion.create_task) and add it to Backlog; linked to its Clockify task once that
           appears. Replies the task state."""
         if not notion.enabled():
@@ -574,12 +574,10 @@ class Handler(BaseHTTPRequestHandler):
                 project = next((p for p in projects or [] if p["id"] == body.get("project")), None)
                 parent = body.get("parent") or ""
                 if not title or prio not in PRIOS or not project or not re.fullmatch(r"(\d{4}-\d{2}-\d{2})?", due) or \
-                        (parent and all(m["id"] != parent for m in project["milestones"])):
+                        (parent and all(t["id"] != parent for t in project["tickets"])):
                     return self.send_json(400, {"error": "bad request"})
                 n = notion.create_task(title, project["id"], parent, prio, due)
-                if not parent:  # a new milestone can get tickets right away
-                    project["milestones"].append({"id": n["id"], "gen": n["gen"], "title": n["title"]})
-                    project["milestones"].sort(key=lambda m: m["title"].lower())
+                project["tickets"].append({"id": n["id"], "gen": n["gen"], "title": n["title"], "parent": parent})
                 with tasks_lock:
                     tasks = read_tasks()
                     tasks.append({"title": title, "prio": prio, "status": "backlog", "clockify": "", "notion": n["gen"],
