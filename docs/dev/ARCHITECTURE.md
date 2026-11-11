@@ -20,7 +20,7 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 |---|---|
 | `server.py` | HTTP server, stats sampler, task storage, archive, Clockify logging, Notion sync |
 | `clockify.py` | Clockify: my open tasks per project (cached; `refresh=True` reloads), create / update / delete time entries |
-| `notion.py` | Notion: my tickets for the board (`my_tasks`), my tickets to add by hand with project and milestone names (`pickable`), one ticket by Task ID (`get_task`), `set_status` |
+| `notion.py` | Notion: my tickets for the board (`my_tasks`), my tickets to add by hand with project and milestone names (`pickable`), my projects and their milestones (`my_projects`), `create_task`, one ticket by Task ID (`get_task`), `set_status`, PR links (`pr_urls`) |
 | `index.html` | both pages, the board, drag & drop, the ticket sheet, the Done dialog |
 | `config.yaml` | `archive_retention_days` |
 | `.env` | API keys (not committed; `.env.sample` is the template) |
@@ -48,7 +48,8 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | `GET /tasks` | | `{version, tasks, clockify_error, notion, notion_error}` |
 | `PUT /tasks` | `{version, tasks}` | the saved state; **409** + current state if `version` is stale; **502** if a Clockify edit/delete failed (nothing saved) |
 | `GET /clockify[?refresh]` | | `{enabled, projects: [{id, name, client, tasks: [{id, name, billable}]}]}` |
-| `GET /notion/tickets` | | `{tickets: [{gen, label, project, status, role, …}], error}` — the cached pick list |
+| `GET /notion/tickets` | | `{tickets: [{gen, label, project, status, role, …}], projects: [{id, name, milestones: [{id, gen, title}]}], error}` — the cached pick list and the projects I own |
+| `POST /notion/create` | `{title, prio, project, parent, due}` | the task state — creates the Notion ticket (`parent` "" = a milestone) |
 | `GET /notion/people?GEN-<n>` | | `{assignees, reviewers, status, prs}` — names and GitHub PR URLs, for the ticket sheet |
 | `POST /notion/add` | `{title, notion}` | the task state; **409** if that Notion ticket is already on the board |
 | `POST /notion/sync` | | `{added, waiting: [GEN ids]}`; **409** while a sync runs |
@@ -94,6 +95,10 @@ On `PUT /tasks` the server compares the new list with the saved one: removed log
 5. New tickets (not on the board): assigned + Backlog → `set_status(Not started)`. Each is added (`add_tickets`) if its Clockify task exists, else it waits: Clockify is polled every 10 s, 6 times, then `notion_error` lists the ones still missing.
 
 **Adding by hand** (`POST /notion/add`). The pick list (`picks`, from `notion.pickable`: assigned and not Blocked / Done / Archived, or In review where I review, plus project and milestone names) is loaded by every sync and at start, so the picker opens without Notion calls. The added ticket keeps the typed title, gets the Notion priority, goes to In progress if assigned + In progress, else Backlog; assigned + Backlog → `set_status(Not started)`. Without its Clockify task yet, `link_when_ready` links it within a minute; any sync also links board tickets that have `notion` but no `clockify`.
+
+**Creating** (`POST /notion/create`). `projects` (from `notion.my_projects`: In progress projects whose Owner is me, with their open milestones = tickets with that project and no parent) is cached with `picks`. `notion.create_task` creates the page in the Tasks data source (assignee me, status Not started, priority, project, parent, due, a `## Description` heading); the board ticket goes to Backlog and `link_when_ready` links its Clockify task. A new milestone is added to the cache at once.
+
+**Personal tickets** (no `notion`, no `clockify`) are only on the board: the sheet hides the Clockify picker for them.
 
 **Board moves.** The browser calls `POST /notion/move` on every column change of a ticket with `notion`. The server fetches the ticket (`get_task`: status, my role, has a reviewer, `is_weekly`) and applies:
 

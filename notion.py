@@ -1,4 +1,5 @@
-"""Minimal Notion REST client for the Tasks database: my tickets for the board, one ticket, setting a ticket's status.
+"""Minimal Notion REST client for the Tasks database: my tickets for the board, one ticket, setting a ticket's status,
+the projects I own with their milestones, creating a ticket.
 Reads NOTION_API_KEY and NOTION_USER_ID from the environment when called."""
 import json
 import os
@@ -8,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 BASE = "https://api.notion.com/v1"
 TASKS = "7c3bce6e-e4e2-46aa-92f7-c0ca33139f7e"  # data source of the General-Task database
+PROJECTS = "7910a986-ebef-4166-a36e-0d67f7fb31d3"  # data source of the General-Projects database
 _titles = {}  # page id -> title of projects and milestones, reloaded by pickable()
 
 
@@ -33,13 +35,13 @@ def _call(path, method="GET", body=None):
         raise NotionError(str(e)) from None
 
 
-def _query(filter):
+def _query(filter, source=TASKS):
     out, cursor = [], None
     while True:
         body = {"filter": filter, "page_size": 100}
         if cursor:
             body["start_cursor"] = cursor
-        r = _call(f"/data_sources/{TASKS}/query", "POST", body)
+        r = _call(f"/data_sources/{source}/query", "POST", body)
         out += r["results"]
         if not r.get("has_more"):
             return out
@@ -121,3 +123,46 @@ def pickable():
         t["project"] = _title(t["project"]) if t["project"] else "(no project)"
         t["label"] = (_title(t["parent"]) + " - " if t["parent"] else "") + t["title"]
     return tasks
+
+
+def _name(page):
+    return "".join(x["plain_text"] for p in page["properties"].values() if p["type"] == "title" for x in p["title"]).strip()
+
+
+def my_projects():
+    """The In progress projects I own (only the owner creates tickets in them), each with its open milestones (tickets
+    without a parent): [{id, name, milestones: [{id, gen, title}]}], sorted by name."""
+    me = os.environ["NOTION_USER_ID"]
+    projects = [{"id": p["id"], "name": _name(p), "milestones": []} for p in _query({"and": [
+        {"property": "Owner", "people": {"contains": me}},
+        {"property": "Status", "status": {"equals": "In progress"}}]}, PROJECTS)]
+    by_id = {p["id"]: p for p in projects}
+    if projects:
+        for page in _query({"and": [{"or": [{"property": "Project", "relation": {"contains": p["id"]}} for p in projects]},
+                                    {"property": "Parent-task", "relation": {"is_empty": True}},
+                                    {"property": "Status", "status": {"does_not_equal": "Done"}},
+                                    {"property": "Status", "status": {"does_not_equal": "Archived"}}]}):
+            t = _task(page)
+            if t["project"] in by_id:
+                by_id[t["project"]]["milestones"].append({"id": t["id"], "gen": t["gen"], "title": t["title"]})
+    for p in projects:
+        p["milestones"].sort(key=lambda m: m["title"].lower())
+    return sorted(projects, key=lambda p: p["name"].lower())
+
+
+def create_task(title, project_id, parent_id, prio, due):
+    """Create a ticket assigned to me, Not started (so its Clockify task gets created), in the project, under the
+    milestone parent_id ("" = a milestone itself), with an empty Description section. Returns it like get_task."""
+    props = {"Task Name": {"title": [{"text": {"content": title}}]},
+             "Status": {"status": {"name": "Not started"}},
+             "Assignee": {"people": [{"id": os.environ["NOTION_USER_ID"]}]},
+             "Priority": {"select": {"name": prio}},
+             "Project": {"relation": [{"id": project_id}]}}
+    if due:
+        props["Due"] = {"date": {"start": due}}
+    if parent_id:
+        props["Parent-task"] = {"relation": [{"id": parent_id}]}
+    return _task(_call("/pages", "POST", {
+        "parent": {"type": "data_source_id", "data_source_id": TASKS}, "properties": props,
+        "children": [{"object": "block", "type": "heading_2",
+                      "heading_2": {"rich_text": [{"type": "text", "text": {"content": "Description"}}]}}]}))

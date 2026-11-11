@@ -51,6 +51,7 @@ clockify_error = None  # last Clockify logging error, shown on the board
 notion_error = None  # last Notion sync error, shown on the board
 sync_lock = threading.Lock()  # one Notion sync at a time (it may wait a minute for Clockify tasks)
 picks = None  # my Notion tickets to add by hand (notion.pickable), loaded at start and by every sync
+projects = None  # the In progress projects I own with their milestones, to create tickets in (notion.my_projects); same
 
 cond = threading.Condition()
 latest = "{}"
@@ -449,9 +450,9 @@ def link_when_ready(gen):
 
 
 def load_picks():
-    global picks, notion_error
+    global picks, projects, notion_error
     try:
-        picks = notion.pickable()
+        picks, projects = notion.pickable(), notion.my_projects()
     except notion.NotionError as e:
         notion_error = "loading the tickets to add: %s" % e
 
@@ -554,7 +555,10 @@ class Handler(BaseHTTPRequestHandler):
         /notion/status {notion, status: Done | In review}: set it.
         /notion/add {title, notion}: add a ticket by hand for that Notion ticket, with its priority, into In progress if
           I'm assigned and it is In progress, else Backlog; a Backlog one I'm assigned to is set to Not started. Linked to
-          its Clockify task, or once that appears. Replies the task state."""
+          its Clockify task, or once that appears. Replies the task state.
+        /notion/create {title, prio, project: page id, parent: milestone page id or "" (= a new milestone), due}:
+          create the Notion ticket (notion.create_task) and add it to Backlog; linked to its Clockify task once that
+          appears. Replies the task state."""
         if not notion.enabled():
             return self.send_json(400, {"error": "Notion is not set up"})
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
@@ -565,6 +569,25 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(409, {"error": "a sync is already running"})
                 added, waiting = run_sync()
                 return self.send_json(200, {"added": added, "waiting": waiting})
+            if self.path == "/notion/create":
+                title, prio, due = " ".join(str(body.get("title") or "").split()), body.get("prio"), body.get("due") or ""
+                project = next((p for p in projects or [] if p["id"] == body.get("project")), None)
+                parent = body.get("parent") or ""
+                if not title or prio not in PRIOS or not project or not re.fullmatch(r"(\d{4}-\d{2}-\d{2})?", due) or \
+                        (parent and all(m["id"] != parent for m in project["milestones"])):
+                    return self.send_json(400, {"error": "bad request"})
+                n = notion.create_task(title, project["id"], parent, prio, due)
+                if not parent:  # a new milestone can get tickets right away
+                    project["milestones"].append({"id": n["id"], "gen": n["gen"], "title": n["title"]})
+                    project["milestones"].sort(key=lambda m: m["title"].lower())
+                with tasks_lock:
+                    tasks = read_tasks()
+                    tasks.append({"title": title, "prio": prio, "status": "backlog", "clockify": "", "notion": n["gen"],
+                                  "role": "assignee", "times": []})
+                    write_tasks(tasks)
+                if clockify.enabled():
+                    threading.Thread(target=link_when_ready, args=(n["gen"],), daemon=True).start()
+                return self.send_json(200, tasks_state())
             if not re.fullmatch(r"[A-Z]+-\d+", gen):
                 return self.send_json(400, {"error": "bad request"})
             if self.path == "/notion/move" and body.get("to") in ("backlog", "progress", "done"):
@@ -630,7 +653,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(400, {"error": "Notion is not set up"})
             if picks is None:
                 load_picks()
-            self.send_json(200 if picks is not None else 502, {"tickets": picks or [], "error": notion_error})
+            self.send_json(200 if picks is not None else 502,
+                           {"tickets": picks or [], "projects": projects or [], "error": notion_error})
         elif self.path.startswith("/notion/people?"):  # ?GEN-<n>: who is on that ticket
             gen = self.path.partition("?")[2]
             if not notion.enabled() or not re.fullmatch(r"[A-Z]+-\d+", gen):

@@ -4,7 +4,10 @@ A small task board with three columns: **Backlog** and **In progress** (both gro
 
 ## The board
 
-- **Add a ticket:** type in *+ Add a task*, press Enter, pick its priority. It goes to Backlog. To add it for one of your Notion tickets instead, pick the project and the ticket below the priority, see [Adding a Notion ticket by hand](#adding-a-notion-ticket-by-hand).
+- **Add a ticket** (it goes to Backlog), with the two buttons above the Backlog column:
+  - **+ Add** — for one of your existing Notion tickets, see [Adding an existing Notion ticket](#adding-an-existing-notion-ticket-add).
+  - **+ Create** — creates a new Notion ticket, see [Creating a Notion ticket](#creating-a-notion-ticket-create). *Skip Notion* in the same dialog adds a **personal** ticket instead.
+- **Personal tickets** have no Notion ticket and are never logged to Clockify: the card shows *(PERSONAL)* after the title and *Not logged to Clockify* under it. The timer and time ranges work as usual, only on the board; the sheet has no Clockify section for them.
 - **Priority** is the colored stripe: red High, yellow Medium, gray Low.
 - **Move a ticket:** press and hold it, then drag it to another column, priority or position (with a mouse just drag it). Or tap it and use *Move to*.
 - **Tap a ticket** to open its sheet: move it, change its priority (it stays in its column), rename it, delete it, start/stop its timer, add or edit time ranges, link it to Clockify.
@@ -64,15 +67,26 @@ A ticket is only added together with its Clockify task. If it is missing, the bo
 
 **Sent back by the reviewer:** a ticket you are assigned to that sits in Done on your board but is *In progress* in Notion again moves back to **In progress** at the next sync.
 
-### Adding a Notion ticket by hand
+### Adding an existing Notion ticket (+ Add)
 
-For tickets the daily sync doesn't bring (e.g. no due date yet): type a name in *+ Add a task*, press Enter, then pick the **project** and the **ticket** in the two lists under the priority buttons.
+For tickets the daily sync doesn't bring (e.g. no due date yet): tap **+ Add**, type a name, pick the **project** and the **ticket**, tap *Add*.
 
 - The name you typed is the ticket's title, so it is also the description of its Clockify time entries.
 - The list shows your tickets that aren't on the board yet: assigned to you and *Backlog*, *Not started*, *In progress* or *In review*; and *In review* where you are the reviewer. They are named like their Clockify task (`4544:<milestone> - <task>`), with their Notion status.
 - The ticket gets its priority from Notion (Medium if not set) and goes to **In progress** if it is assigned to you and In progress in Notion, otherwise to **Backlog**.
 - A *Backlog* ticket assigned to you is set to **Not started** in Notion, and the board ticket is linked to its Clockify task once that appears (within a minute; otherwise at the next sync). Until then the card shows the Task ID.
 - The list is loaded by the daily sync (or when the server starts) and reloaded by **⟳ Notion**, so a ticket created in Notion during the day shows up after a Sync.
+
+### Creating a Notion ticket (+ Create)
+
+Tap **+ Create**, type a name, pick the priority, the **project** and **where** in it, check the due date, tap *Create*.
+
+- **Projects:** only the *In progress* projects you own (only the owner creates tickets in a project).
+- **Where:** *Root* creates a new milestone; picking a milestone creates a task under it (our hierarchy is Project → Milestone → Task, so nothing goes under a task).
+- The Notion ticket gets: your name as Task Name, you as Assignee, the priority, the project and milestone, the due date (today by default, can be changed or cleared), status **Not started** (so its Clockify task gets created), and an empty *Description* section.
+- The board ticket goes to **Backlog** and is linked to its Clockify task once that appears (within a minute; otherwise at the next sync).
+- The project and milestone lists are loaded with the ticket list (daily, on start and by ⟳ Notion); a milestone you create is in the list right away.
+- **Skip Notion (personal)** adds a [personal ticket](#the-board) with the name and priority instead.
 
 ### Moving tickets
 

@@ -112,13 +112,21 @@
   .add { width: 100%; margin: 6px 0 2px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--text-primary); background: transparent;
     border: 1px dashed var(--track); border-radius: 10px; outline: none; -webkit-appearance: none; transition: border-color .2s; }
   .add:focus { border-style: solid; border-color: var(--series-1); }
-  #add-prio { display: none; align-items: center; margin: 6px 0 2px; font-size: 14px; color: var(--text-secondary); }
-  #add-prio.show { display: flex; }
-  #add-prio .btn { flex: 1; margin-left: 6px; padding: 7px 0; border-left: 4px solid var(--pc); }
-  #add-notion { display: none; margin: 6px 0 2px; }
-  #add-notion.show { display: block; }
-  #add-notion select { display: block; width: 100%; margin-top: 6px; font: inherit; font-size: 15px; color: var(--text-primary);
-    background: var(--surface-0); border: 1px solid var(--track); border-radius: 8px; padding: 6px 8px; }
+  .addbar { display: flex; }
+  .addbar .add { flex: 1; text-align: left; cursor: pointer; }
+  .addbar .add + .add { margin-left: 8px; }
+  #new { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 15; display: none; align-items: flex-start; justify-content: center;
+    padding: 60px 16px 0; background: rgba(0,0,0,.45); }
+  #new.show { display: flex; }
+  #new .box { width: 540px; max-width: 100%; padding: 20px; border-radius: 16px; background: var(--surface-1); box-shadow: 0 24px 60px rgba(0,0,0,.4); }
+  #new .label { margin: 16px 0 8px; }
+  #new input, #new select { font: inherit; font-size: 16px; color: var(--text-primary); background: var(--surface-0);
+    border: 1px solid var(--track); border-radius: 8px; padding: 7px 8px; }
+  #new input { -webkit-appearance: none; }
+  #new select, #n-title { display: block; width: 100%; margin-bottom: 8px; }
+  #n-prio .btn { margin-right: 6px; border-left: 4px solid var(--pc); }
+  #n-due-w span { margin-right: 8px; color: var(--text-secondary); }
+  .card .pj.personal { font-size: 12px; letter-spacing: .04em; }
   .card { position: relative; margin-top: 8px; padding: 11px 12px; border-radius: 10px; background: var(--card); box-shadow: var(--shadow);
     font-size: 15px; line-height: 1.3; word-wrap: break-word; cursor: grab; -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; transition: transform .15s, box-shadow .2s; }
@@ -249,9 +257,7 @@
 </main>
 <section class="page" id="tasks">
   <div class="tile"><div class="col-head"><span>Backlog<span class="count" id="n-backlog"></span></span></div>
-    <input class="add" id="add" type="text" placeholder="+ Add a task" autocomplete="off">
-    <div id="add-prio">Priority<button class="btn" type="button" data-p="High" style="--pc:var(--critical)">High</button><button class="btn" type="button" data-p="Medium" style="--pc:var(--warning)">Medium</button><button class="btn" type="button" data-p="Low" style="--pc:var(--text-muted)">Low</button></div>
-    <div id="add-notion"><select id="an-proj"></select><select id="an-task"></select></div>
+    <div class="addbar"><button class="add" id="add-link" type="button">+ Add</button><button class="add" id="add-new" type="button">+ Create</button></div>
     <div class="list" id="l-backlog"></div></div>
   <div class="tile"><div class="col-head"><span>In progress<span class="count" id="n-progress"></span></span><span class="tot" id="t-progress"></span></div>
     <div class="list" id="l-progress"></div></div>
@@ -274,6 +280,14 @@
   <div class="timebar"><button class="btn" id="s-timer" type="button"></button><button class="btn" id="s-all" type="button"></button></div>
   <div class="timebar"><input id="s-from" type="time"><span>–</span><input id="s-to" type="time"><button class="btn" id="s-addtime" type="button">Add time</button></div>
   <div class="row" style="margin-top:14px"><button class="btn" id="s-del" type="button" style="color:var(--critical)">Delete</button><button class="btn on" id="s-close" type="button">Done</button></div>
+</div></div>
+<div id="new"><div class="box">
+  <input id="n-title" type="text" placeholder="Name (also the Clockify description)" autocomplete="off">
+  <div id="n-prio-w"><div class="label">Priority</div><div id="n-prio"><button class="btn" type="button" data-p="High" style="--pc:var(--critical)">High</button><button class="btn" type="button" data-p="Medium" style="--pc:var(--warning)">Medium</button><button class="btn" type="button" data-p="Low" style="--pc:var(--text-muted)">Low</button></div></div>
+  <div id="n-notion"><div class="label" id="n-head"></div><select id="n-proj"></select><select id="n-task"></select>
+    <div id="n-due-w" class="timebar"><span>Due</span><input id="n-due" type="date"></div></div>
+  <div class="row" style="margin-top:14px"><button class="btn" id="n-skip" type="button">Skip Notion (personal)</button>
+    <span><button class="btn" id="n-cancel" type="button">Cancel</button> <button class="btn on" id="n-ok" type="button"></button></span></div>
 </div></div>
 <div id="ask"><div class="box"><div id="ask-t"></div><div id="ask-b"><button class="btn" type="button" data-st="Done">Done</button><button class="btn" type="button" data-st="In review">In review</button><button class="btn" type="button" data-st="">Leave as is</button></div></div></div>
 <div id="toast"></div>
@@ -618,7 +632,7 @@
     x.onerror = function () { busy = null; tasksOk = false; queued = false; toast('Could not reach the PC — change not saved'); };
     x.send(body ? JSON.stringify(body) : null);
   }
-  function loadTasks() { if (!busy && !cur && !drag && document.activeElement !== $('add')) req('GET'); }
+  function loadTasks() { if (!busy && !cur && !drag && $('new').className !== 'show') req('GET'); }
   function save() { // a save during another one waits for its new version instead of getting a conflict
     if (busy === 'PUT') queued = true; else req('PUT', { version: version, tasks: tasks });
     renderTasks(); if (cur) renderSheet();
@@ -639,7 +653,7 @@
       if (!r.enabled) return;
       cf = r.projects; cfTask = {};
       cf.forEach(function (p) { p.tasks.forEach(function (t) { cfTask[t.id] = [p, t]; }); });
-      $('s-cf').style.display = ''; renderTasks(); if (cur) renderClockify(cur); // not renderSheet: keep what is being typed
+      renderTasks(); if (cur) { $('s-cf').style.display = linkable(cur) ? '' : 'none'; renderClockify(cur); } // not renderSheet: keep what is being typed
     };
     x.send();
   }
@@ -648,8 +662,9 @@
     var i = tasks.indexOf(t), run = running(t), play = t.status === 'progress';
     var link = t.clockify && cfTask[t.clockify.split('/')[1]], pj = link && link[0].name.replace(/^\d+_/, ''); // project without its code
     var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title) +
-            (pj ? ' <span class="pj">(' + esc(pj) + ')</span>' : '');
-    if (link || t.notion) h += '<div class="cfn">' + (t.role === 'reviewer' ? 'Review · ' : '') + esc((link ? link[1].name : t.notion).replace(/^GEN-/, '')) + '</div>';
+            (pj ? ' <span class="pj">(' + esc(pj) + ')</span>' : personal(t) ? ' <span class="pj personal">(PERSONAL)</span>' : '');
+    if (personal(t)) h += '<div class="cfn">Not logged to Clockify</div>';
+    else if (link || t.notion) h += '<div class="cfn">' + (t.role === 'reviewer' ? 'Review · ' : '') + esc((link ? link[1].name : t.notion).replace(/^GEN-/, '')) + '</div>';
     var tt = todays(t);
     if (tt.length)
       h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(tt)) + ' · ' +
@@ -677,61 +692,96 @@
     $('t-progress').textContent = tot.progress ? fmtMin(tot.progress) : '';
     $('t-done').textContent = tot.done ? fmtMin(tot.done) : '';
   }
-  // Adding a task: Enter in the input, then pick its priority, or the Notion ticket it is for (its priority comes from Notion)
-  var newTitle = null, picks = null; // my Notion tickets that can be added (cached by the server, reloaded by Sync)
-  function askPrio(title) {
-    newTitle = title; $('add-prio').className = title ? 'show' : '';
-    $('add-notion').className = title && notionOn ? 'show' : '';
-    if (title && notionOn) { picks = null; renderPicks(''); loadPicks(); }
+  // ---- Adding a ticket: + Add = for an existing Notion ticket, + Create = a new Notion ticket, or a personal one ----
+  // (personal = no Notion ticket, never linked to Clockify; its time is only tracked on the board)
+  var newMode = null, newPrio = 'Medium', picks = null, owned = null; // my Notion tickets to add / projects I own (server cache)
+  function personal(t) { return !t.clockify && !t.notion; }
+  function linkable(t) { return !personal(t); } // personal tickets aren't linked to Clockify
+  function openNew(mode) {
+    newMode = mode; newPrio = 'Medium';
+    $('n-title').value = ''; $('n-due').value = today();
+    $('n-prio-w').style.display = $('n-due-w').style.display = $('n-skip').style.display = mode === 'create' ? '' : 'none';
+    $('n-notion').style.display = notionOn ? '' : 'none';
+    $('n-head').textContent = mode === 'create' ? 'New Notion ticket: project, then where (a milestone or the root)' : 'Notion ticket';
+    $('n-ok').textContent = mode === 'create' ? (notionOn ? 'Create' : 'Add') : 'Add';
+    renderNew('');
+    $('new').className = 'show'; $('n-title').focus();
+    if (notionOn) loadPicks();
   }
+  function closeNew() { newMode = null; $('new').className = ''; if (document.activeElement) document.activeElement.blur(); }
   function loadPicks() {
     var x = new XMLHttpRequest();
     x.open('GET', 'notion/tickets');
     x.onload = function () {
       var r = JSON.parse(x.responseText);
       if (x.status !== 200) return toast('Notion: ' + r.error);
-      picks = r.tickets; renderPicks('');
+      picks = r.tickets; owned = r.projects;
+      if (newMode) renderNew($('n-proj').value);
     };
     x.send();
   }
-  function renderPicks(proj) { // project, then its tickets that aren't on the board yet, named like their Clockify task
-    var on = {}, projs = [];
-    tasks.forEach(function (t) { if (t.notion) on[t.notion] = 1; });
-    var free = (picks || []).filter(function (n) { return !on[n.gen]; });
-    free.forEach(function (n) { if (projs.indexOf(n.project) < 0) projs.push(n.project); });
-    var h = '<option value="">' + (picks ? '— or a Notion ticket: project —' : 'Loading Notion tickets…') + '</option>';
-    projs.sort().forEach(function (p) { h += '<option value="' + esc(p) + '"' + (p === proj ? ' selected' : '') + '>' + esc(p) + '</option>'; });
-    $('an-proj').innerHTML = h; h = '<option value="">' + (proj ? '— Pick a ticket —' : '') + '</option>';
-    free.filter(function (n) { return n.project === proj; }).sort(function (a, b) { return a.label.localeCompare(b.label); }).forEach(function (n) {
-      h += '<option value="' + esc(n.gen) + '">' + esc(n.gen.replace(/^GEN-/, '') + ':' + n.label + ' · ' + n.status + (n.role === 'reviewer' ? ' · Review' : '')) + '</option>';
-    });
-    $('an-task').innerHTML = h; $('an-task').disabled = !proj;
+  function renderNew(proj) {
+    [].forEach.call($('n-prio').querySelectorAll('.btn'), function (b) { b.className = 'btn' + (b.getAttribute('data-p') === newPrio ? ' on' : ''); });
+    var h = '<option value="">' + (picks ? '— Project —' : 'Loading Notion…') + '</option>', t = '';
+    if (newMode === 'create') { // projects I own, then the root or one of its milestones
+      (owned || []).forEach(function (p) { h += '<option value="' + esc(p.id) + '"' + (p.id === proj ? ' selected' : '') + '>' + esc(p.name) + '</option>'; });
+      var p = (owned || []).filter(function (x) { return x.id === proj; })[0];
+      if (p) {
+        t = '<option value="">— Where —</option><option value="root">Root (a new milestone)</option>';
+        p.milestones.forEach(function (m) { t += '<option value="' + esc(m.id) + '">' + esc(m.title) + ' (' + esc(m.gen.replace(/^GEN-/, '')) + ')</option>'; });
+      }
+    } else { // my tickets that aren't on the board yet, named like their Clockify task
+      var on = {}, projs = [];
+      tasks.forEach(function (x) { if (x.notion) on[x.notion] = 1; });
+      var free = (picks || []).filter(function (n) { return !on[n.gen]; });
+      free.forEach(function (n) { if (projs.indexOf(n.project) < 0) projs.push(n.project); });
+      projs.sort().forEach(function (x) { h += '<option value="' + esc(x) + '"' + (x === proj ? ' selected' : '') + '>' + esc(x) + '</option>'; });
+      if (proj) {
+        t = '<option value="">— Ticket —</option>';
+        free.filter(function (n) { return n.project === proj; }).sort(function (a, b) { return a.label.localeCompare(b.label); }).forEach(function (n) {
+          t += '<option value="' + esc(n.gen) + '">' + esc(n.gen.replace(/^GEN-/, '') + ':' + n.label + ' · ' + n.status + (n.role === 'reviewer' ? ' · Review' : '')) + '</option>';
+        });
+      }
+    }
+    $('n-proj').innerHTML = h; $('n-task').innerHTML = t; $('n-task').disabled = !t;
   }
-  $('an-proj').onchange = function () { renderPicks(this.value); };
-  $('an-task').onchange = function () {
-    var gen = this.value; if (!gen || !newTitle) return;
-    this.disabled = true;
+  function postNew(path, body) {
+    $('n-ok').disabled = true;
     var x = new XMLHttpRequest();
-    x.open('POST', 'notion/add');
+    x.open('POST', 'notion/' + path);
     x.onload = function () {
+      $('n-ok').disabled = false;
       var r = JSON.parse(x.responseText);
-      if (x.status !== 200) { $('an-task').disabled = false; return toast('Notion: ' + r.error); }
-      $('add').value = ''; askPrio(null);
-      version = r.version; tasks = r.tasks; renderTasks();
+      if (x.status !== 200) return toast('Notion: ' + r.error);
+      closeNew(); version = r.version; tasks = r.tasks; renderTasks();
+      if (path === 'create') toast('Notion ' + r.tasks[r.tasks.length - 1].notion + ' created, waiting for its Clockify task');
     };
-    x.onerror = function () { $('an-task').disabled = false; toast('Could not reach the PC — not added'); };
-    x.send(JSON.stringify({ title: newTitle, notion: gen }));
+    x.onerror = function () { $('n-ok').disabled = false; toast('Could not reach the PC — not added'); };
+    x.send(JSON.stringify(body));
+  }
+  function addPersonal(title) {
+    tasks.push({ title: title, status: 'backlog', prio: newPrio, clockify: '', notion: '', role: '', times: [] });
+    closeNew(); save();
+  }
+  $('add-link').onclick = function () { if (notionOn) openNew('add'); else toast('Notion is not set up'); };
+  $('add-new').onclick = function () { openNew('create'); };
+  $('n-prio').onclick = function (e) { var p = e.target.getAttribute('data-p'); if (p) { newPrio = p; renderNew($('n-proj').value); } };
+  $('n-proj').onchange = function () { renderNew(this.value); };
+  $('n-cancel').onclick = closeNew;
+  $('new').onclick = function (e) { if (e.target === this) closeNew(); };
+  $('n-title').onkeydown = function (e) { if (e.keyCode === 27) closeNew(); };
+  $('n-skip').onclick = function () {
+    var title = $('n-title').value.trim();
+    if (!title) return toast('Type a name first');
+    addPersonal(title);
   };
-  $('add').onkeydown = function (e) {
-    if (e.keyCode === 27) askPrio(null);
-    if (e.keyCode !== 13 || !this.value.trim()) return;
-    askPrio(this.value.trim()); this.blur();
-  };
-  $('add').oninput = function () { askPrio(null); };
-  $('add-prio').onclick = function (e) {
-    var p = e.target.getAttribute('data-p'); if (!p || !newTitle) return;
-    tasks.push({ title: newTitle, status: 'backlog', prio: p, clockify: '', notion: '', role: '', times: [] });
-    $('add').value = ''; askPrio(null); save();
+  $('n-ok').onclick = function () {
+    var title = $('n-title').value.trim(), proj = $('n-proj').value, sel = $('n-task').value;
+    if (!title) return toast('Type a name first');
+    if (newMode === 'create' && !notionOn) return addPersonal(title);
+    if (!proj || !sel) return toast(newMode === 'create' ? 'Pick a project and where to create it — or Skip Notion' : 'Pick a project and a ticket');
+    if (newMode === 'add') postNew('add', { title: title, notion: sel });
+    else postNew('create', { title: title, prio: newPrio, project: proj, parent: sel === 'root' ? '' : sel, due: $('n-due').value });
   };
 
   // ---- Drag & drop: long-press a card (touch) or drag it (mouse), drop it on any column / priority ----
@@ -891,7 +941,7 @@
              '</span>' + (lg ? '<span class="lg">' + lg + '</span>' : '') + '</span><span>' + del + '</span></li>';
     });
     $('s-times').innerHTML = h;
-    if (cf) renderClockify(t);
+    if (cf) { $('s-cf').style.display = linkable(t) ? '' : 'none'; renderClockify(t); }
     var all = spent(t.times), older = t.times.length - tt.length;
     $('s-total').textContent = !t.times.length ? '' : showAll || !older ? 'Total ' + fmtMin(all) : 'Today ' + fmtMin(spent(tt)) + ' · Total ' + fmtMin(all);
     $('s-all').textContent = showAll ? 'Show today' : 'Show all (' + older + ' earlier)';
