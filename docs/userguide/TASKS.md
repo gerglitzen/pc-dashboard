@@ -4,13 +4,13 @@ A small task board with three columns: **Backlog** and **In progress** (both gro
 
 ## The board
 
-- **Add a ticket** with the two buttons above the Backlog column (new tickets go to Backlog, except an *+ Add*-ed ticket that is already In progress in Notion):
+- **Add a ticket** with the two buttons above the Backlog column (new tickets go to Backlog, except an *+ Add*-ed ticket that is assigned to you and already In progress in Notion):
   - **+ Add** — for one of your existing Notion tickets, see [Adding an existing Notion ticket](#adding-an-existing-notion-ticket-add).
   - **+ Create** — creates a new Notion ticket, see [Creating a Notion ticket](#creating-a-notion-ticket-create). *Skip Notion (personal)* in the same dialog adds a **personal** ticket instead.
 - **Personal tickets** have no Notion ticket and are never logged to Clockify: the card shows *(PERSONAL)* after the title and *Not logged to Clockify* under it. The timer and time ranges work as usual, only on the board; the sheet has no Clockify section for them.
 - **Priority** is the colored stripe: red High, yellow Medium, gray Low.
 - **Move a ticket:** press and hold it, then drag it to another column, priority or position (with a mouse just drag it). Or tap it and use *Move to*.
-- **Tap a ticket** to open its sheet: move it, change its priority (it stays in its column), rename it, delete it, start/stop its timer, add or edit time ranges, link it to Clockify.
+- Each ticket is a **card** on the board. **Tap a card** to open the ticket's detail panel (the **sheet**): move it, change its priority (it stays in its column), rename it, delete it, start/stop its timer, add or edit time ranges, link it to Clockify.
   For a Notion ticket the sheet also shows, top right, who is the **Assignee** and the **Reviewer**, and links to its GitHub pull requests (*PR #347*) if it has any (loaded from Notion each time you open it).
 
 ### Time tracking
@@ -32,7 +32,7 @@ If the board was changed on the PC (by the daily sync, for example) while you ed
 
 ## Clockify
 
-Link a ticket to a Clockify task in its sheet: pick the project and the task under **Clockify**. The task must already exist in Clockify (ours are created from Notion, see below); the list shows the tasks assigned to you that aren't done, in projects that aren't archived, and is reloaded each time you open a ticket.
+Notion tickets are linked to their Clockify task automatically (see [Notion](#notion)); you only need this by hand to change a link. Link a ticket to a Clockify task in its sheet: pick the project and the task under **Clockify**. The task must already exist in Clockify (ours are created from Notion, see below); the list shows the tasks assigned to you that aren't done, in projects that aren't archived, and is reloaded each time you open a ticket.
 
 Every time range you finish on a linked ticket (stopping its timer or *Add time*) is logged to Clockify as a time entry on that range's date, with the ticket title as description. Logged ranges show *✓ Clockify*. If logging fails, the error is shown and the server retries every minute.
 

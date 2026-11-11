@@ -8,7 +8,7 @@ The PC runs one Python server; an iPad opens its page on the LAN. The **System**
 2. An **external pipeline** (not in this repo) creates a **Clockify** task for it named `GEN-<n>:<milestone> - <task>`, once its Notion status is *Not started* (it left Backlog; the board sets this itself for Backlog tickets it imports, adds or creates).
 3. The ticket comes to the board: the daily sync / ⟳ Notion (due today or earlier), or *+ Add*. The `GEN-<n>` prefix links board ticket ↔ Clockify task ↔ Notion ticket.
 4. You run its timer; each finished time range becomes a Clockify **time entry**.
-5. Moving the ticket on the board sets its Notion **status** (In progress; on Done you are asked: Done / In review / leave).
+5. Moving the ticket on the board sets its Notion **status** (In progress; on Done you are asked: Done / In review / leave; full rules in [Board moves](#notion-sync)).
 6. The next day its Done ticket is archived to `archive/YYYY-MM-DD.jsonl`.
 
 **Security:** the server listens on all interfaces (`0.0.0.0:8765`) with **no login**; anyone on the LAN can change the board, Clockify entries and Notion statuses. Keep it on a trusted home network; never expose it to the internet.
@@ -132,7 +132,7 @@ On `PUT /tasks` the server compares the new list with the saved one: removed log
 
 **Linking.** Our Clockify tasks are created from Notion by a separate pipeline (outside this repo; this app depends on its contract: the name format below, a task created for the assignee when the ticket leaves Backlog, the reviewer added at In review, closed at Done) and named `<Task ID>:<milestone> - <task>`. `GEN_RE` reads the Task ID from the name; that is the only link between a board ticket, its Clockify task and its Notion ticket. The pipeline creates the Clockify task when the Notion ticket leaves Backlog (for the assignee), adds the reviewer when it is In review, and closes it when it is Done.
 
-**Daily import / Sync button** (`run_sync` → `notion_sync`, then `wait_for_clockify`):
+**Daily import / ⟳ Notion button** (`run_sync` → `notion_sync`, then `wait_for_clockify`):
 
 1. `notion.my_tasks(today)` — one query on the Tasks data source: due ≤ today and (assignee = me and status not Blocked / In review / Done / Archived) or (reviewer = me and status = In review).
 2. Load my Clockify tasks fresh and map Task ID → Clockify task.
