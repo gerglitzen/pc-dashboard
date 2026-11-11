@@ -40,7 +40,7 @@ Logged ranges stay in sync:
 
 Your tickets in the Notion Tasks database come to the board by themselves, and moving them on the board updates their Notion status. A board ticket knows its Notion ticket by the Task ID at the start of its Clockify task's name, e.g. `GEN-4544:MLOps Feature - Meeting 2026-11-10` → Notion `GEN-4544`. Tickets you linked to such a Clockify task by hand are Notion tickets too.
 
-Notion tickets are titled with their Clockify task name (without the Task ID). The card shows the Clockify task, with **Review ·** in front when you are the reviewer.
+Notion tickets are titled with their Clockify task name (without the Task ID). The card shows the project after the title, without its code (`2579_OE_AI_IP` → `(OE_AI_IP)`), and the Clockify task below, with **Review ·** in front when you are the reviewer.
 
 ### Getting tickets: daily sync and the ⟳ Notion button
 

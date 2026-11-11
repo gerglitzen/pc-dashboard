@@ -129,6 +129,7 @@
   .card.run { box-shadow: 0 0 0 1.5px var(--series-1), var(--shadow); }
   .card.has-play { padding-right: 52px; }
   .card .cfn { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+  .card .pj { color: var(--text-muted); }
   .card .m { font-size: 13px; color: var(--text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
   .card.run .m { color: var(--series-1); }
   .play { position: absolute; right: 10px; top: 50%; margin-top: -17px; width: 34px; height: 34px; border-radius: 50%; border: 0;
@@ -638,8 +639,9 @@
 
   function card(t) {
     var i = tasks.indexOf(t), run = running(t), play = t.status === 'progress';
-    var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title);
-    var link = t.clockify && cfTask[t.clockify.split('/')[1]];
+    var link = t.clockify && cfTask[t.clockify.split('/')[1]], pj = link && link[0].name.replace(/^\d+_/, ''); // project without its code
+    var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title) +
+            (pj ? ' <span class="pj">(' + esc(pj) + ')</span>' : '');
     if (link || t.notion) h += '<div class="cfn">' + (t.role === 'reviewer' ? 'Review · ' : '') + esc(link ? link[1].name : t.notion) + '</div>';
     var tt = todays(t);
     if (tt.length)
