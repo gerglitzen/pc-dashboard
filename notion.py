@@ -48,7 +48,8 @@ def _query(filter):
 
 def _task(page):
     """{id, gen: "GEN-<n>", title, status, prio, role: "assignee" | "reviewer" | "" (my role on it),
-    reviewed: it has a reviewer, weekly: is_weekly is ticked, project / parent: page id or ""}"""
+    reviewed: it has a reviewer, weekly: is_weekly is ticked, project / parent: page id or "",
+    assignees / reviewers: their names}"""
     p = page["properties"]
     uid = p["Task ID"]["unique_id"]
     me = os.environ["NOTION_USER_ID"]
@@ -60,7 +61,9 @@ def _task(page):
             "role": "assignee" if any(u["id"] == me for u in p["Assignee"]["people"]) else "reviewer" if me in reviewers else "",
             "reviewed": bool(reviewers), "weekly": bool(p.get("is_weekly", {}).get("checkbox")),
             "project": next((r["id"] for r in p["Project"]["relation"]), ""),
-            "parent": next((r["id"] for r in p["Parent-task"]["relation"]), "")}
+            "parent": next((r["id"] for r in p["Parent-task"]["relation"]), ""),
+            "assignees": [u.get("name", "") for u in p["Assignee"]["people"]],
+            "reviewers": [u.get("name", "") for u in p["Reviewer"]["people"]]}
 
 
 def my_tasks(day):

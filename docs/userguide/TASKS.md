@@ -8,6 +8,7 @@ A small task board with three columns: **Backlog** and **In progress** (both gro
 - **Priority** is the colored stripe: red High, yellow Medium, gray Low.
 - **Move a ticket:** press and hold it, then drag it to another column, priority or position (with a mouse just drag it). Or tap it and use *Move to*.
 - **Tap a ticket** to open its sheet: move it, change its priority (it stays in its column), rename it, delete it, start/stop its timer, add or edit time ranges, link it to Clockify.
+  For a Notion ticket the sheet also shows, top right, who is the **Assignee** and the **Reviewer** (loaded from Notion each time you open it).
 
 ### Time tracking
 

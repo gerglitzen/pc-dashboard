@@ -149,6 +149,9 @@
     box-shadow: 0 24px 60px rgba(0,0,0,.4); transform: translateY(24px) scale(.97); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
   #sheet.show .box { transform: none; }
   #sheet .label { margin: 18px 0 8px; }
+  #s-top { display: flex; justify-content: space-between; flex-wrap: wrap; }
+  #s-people { min-width: 150px; font-size: 15px; }
+  #s-people .label { margin-bottom: 4px; }
   #s-move .btn, #s-prio .btn { margin: 0 6px 6px 0; }
   #s-prio .btn { border-left: 4px solid var(--pc); }
   #sheet input { font: inherit; font-size: 16px; color: var(--text-primary); background: var(--surface-0);
@@ -256,10 +259,12 @@
 </div></div>
 <div id="sheet"><div class="box">
   <input id="s-title" type="text">
-  <div class="label">Move to</div>
-  <div id="s-move"></div>
-  <div class="label">Priority</div>
-  <div id="s-prio"></div>
+  <div id="s-top"><div>
+    <div class="label">Move to</div>
+    <div id="s-move"></div>
+    <div class="label">Priority</div>
+    <div id="s-prio"></div>
+  </div><div id="s-people"></div></div>
   <div id="s-cf" style="display:none"><div class="label">Clockify</div>
     <select id="s-proj"></select><select id="s-task"></select><div class="sub" id="cf-err"></div></div>
   <div class="label"><span>Time</span><span id="s-total"></span></div>
@@ -831,7 +836,23 @@
   };
 
   // ---- Ticket sheet ----
-  function openSheet(t) { cur = t; editIdx = null; showAll = false; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; if (cf) loadClockify(true); }
+  function openSheet(t) { cur = t; editIdx = null; showAll = false; sheetProj = (t.clockify || '').split('/')[0]; renderSheet(); $('sheet').className = 'show'; if (cf) loadClockify(true); loadPeople(t); }
+  function loadPeople(t) { // who is assigned and who reviews its Notion ticket, loaded each time the sheet opens
+    $('s-people').innerHTML = '';
+    if (!notionOn || !t.notion) return;
+    $('s-people').innerHTML = '<div class="label">Notion ' + esc(t.notion) + '</div><div class="sub">Loading…</div>';
+    var x = new XMLHttpRequest();
+    x.open('GET', 'notion/people?' + t.notion);
+    x.onload = function () {
+      if (cur !== t) return;
+      var r = JSON.parse(x.responseText);
+      if (x.status !== 200) { $('s-people').innerHTML = '<div class="label">Notion ' + esc(t.notion) + '</div><div class="sub">' + esc(r.error) + '</div>'; return; }
+      function who(names) { return names.length ? names.map(esc).join('<br>') : '<span class="sub">—</span>'; }
+      $('s-people').innerHTML = '<div class="label">Assignee</div><div>' + who(r.assignees) + '</div>' +
+        '<div class="label">Reviewer</div><div>' + who(r.reviewers) + '</div>';
+    };
+    x.send();
+  }
   function closeSheet() { cur = null; $('sheet').className = ''; if (document.activeElement) document.activeElement.blur(); }
   function renderSheet() {
     var t = cur, h = '';
@@ -888,7 +909,7 @@
     h = '<option value="">' + (sheetProj ? '— Pick a task —' : '') + '</option>';
     cf.forEach(function (p) {
       if (p.id === sheetProj) p.tasks.forEach(function (x) {
-        h += '<option value="' + x.id + '"' + (x.id === tid ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+        h += '<option value="' + x.id + '"' + (x.id === tid ? ' selected' : '') + '>' + esc(x.name.replace(/^GEN-/, '')) + '</option>';
       });
     });
     if (tid && !cfTask[tid] && sheetProj === t.clockify.split('/')[0]) h += '<option value="' + esc(tid) + '" selected>(task not available)</option>';

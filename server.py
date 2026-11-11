@@ -631,6 +631,15 @@ class Handler(BaseHTTPRequestHandler):
             if picks is None:
                 load_picks()
             self.send_json(200 if picks is not None else 502, {"tickets": picks or [], "error": notion_error})
+        elif self.path.startswith("/notion/people?"):  # ?GEN-<n>: who is on that ticket
+            gen = self.path.partition("?")[2]
+            if not notion.enabled() or not re.fullmatch(r"[A-Z]+-\d+", gen):
+                return self.send_json(400, {"error": "bad request"})
+            try:
+                n = notion.get_task(gen)
+                self.send_json(200, {"assignees": n["assignees"], "reviewers": n["reviewers"], "status": n["status"]})
+            except notion.NotionError as e:
+                self.send_json(502, {"error": str(e)})
         elif self.path.split("?")[0] == "/clockify":
             if not clockify.enabled():
                 return self.send_json(200, {"enabled": False, "projects": []})
