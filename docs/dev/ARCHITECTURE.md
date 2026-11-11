@@ -49,7 +49,7 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | `PUT /tasks` | `{version, tasks}` | the saved state; **409** + current state if `version` is stale; **502** if a Clockify edit/delete failed (nothing saved) |
 | `GET /clockify[?refresh]` | | `{enabled, projects: [{id, name, client, tasks: [{id, name, billable}]}]}` |
 | `GET /notion/tickets` | | `{tickets: [{gen, label, project, status, role, …}], error}` — the cached pick list |
-| `GET /notion/people?GEN-<n>` | | `{assignees, reviewers, status}` — names, for the ticket sheet |
+| `GET /notion/people?GEN-<n>` | | `{assignees, reviewers, status, prs}` — names and GitHub PR URLs, for the ticket sheet |
 | `POST /notion/add` | `{title, notion}` | the task state; **409** if that Notion ticket is already on the board |
 | `POST /notion/sync` | | `{added, waiting: [GEN ids]}`; **409** while a sync runs |
 | `POST /notion/move` | `{notion, to: backlog\|progress\|done}` | `{role, status, changed, suggest}` |

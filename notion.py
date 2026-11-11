@@ -49,7 +49,7 @@ def _query(filter):
 def _task(page):
     """{id, gen: "GEN-<n>", title, status, prio, role: "assignee" | "reviewer" | "" (my role on it),
     reviewed: it has a reviewer, weekly: is_weekly is ticked, project / parent: page id or "",
-    assignees / reviewers: their names}"""
+    assignees / reviewers: their names, prs: page ids of its GitHub Pull Requests}"""
     p = page["properties"]
     uid = p["Task ID"]["unique_id"]
     me = os.environ["NOTION_USER_ID"]
@@ -63,7 +63,8 @@ def _task(page):
             "project": next((r["id"] for r in p["Project"]["relation"]), ""),
             "parent": next((r["id"] for r in p["Parent-task"]["relation"]), ""),
             "assignees": [u.get("name", "") for u in p["Assignee"]["people"]],
-            "reviewers": [u.get("name", "") for u in p["Reviewer"]["people"]]}
+            "reviewers": [u.get("name", "") for u in p["Reviewer"]["people"]],
+            "prs": [r["id"] for r in p["GitHub Pull Requests"]["relation"]]}
 
 
 def my_tasks(day):
@@ -88,6 +89,13 @@ def get_task(gen):
 
 def set_status(page_id, status):
     _call(f"/pages/{page_id}", "PATCH", {"properties": {"Status": {"status": {"name": status}}}})
+
+
+def pr_urls(page_ids):
+    """GitHub URLs of linked GitHub Pull Requests pages."""
+    with ThreadPoolExecutor(4) as pool:
+        pages = list(pool.map(lambda i: _call(f"/pages/{i}"), page_ids))
+    return [u for pg in pages for u in [(pg["properties"].get("_external_object_url") or {}).get("url")] if u]
 
 
 def _title(page_id):

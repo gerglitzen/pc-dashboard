@@ -637,7 +637,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(400, {"error": "bad request"})
             try:
                 n = notion.get_task(gen)
-                self.send_json(200, {"assignees": n["assignees"], "reviewers": n["reviewers"], "status": n["status"]})
+                self.send_json(200, {"assignees": n["assignees"], "reviewers": n["reviewers"], "status": n["status"],
+                                     "prs": notion.pr_urls(n["prs"])})
             except notion.NotionError as e:
                 self.send_json(502, {"error": str(e)})
         elif self.path.split("?")[0] == "/clockify":
