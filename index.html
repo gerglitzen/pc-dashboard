@@ -642,7 +642,7 @@
     var link = t.clockify && cfTask[t.clockify.split('/')[1]], pj = link && link[0].name.replace(/^\d+_/, ''); // project without its code
     var h = '<div class="card p-' + t.prio + (run ? ' run' : '') + (play ? ' has-play' : '') + '" data-i="' + i + '">' + esc(t.title) +
             (pj ? ' <span class="pj">(' + esc(pj) + ')</span>' : '');
-    if (link || t.notion) h += '<div class="cfn">' + (t.role === 'reviewer' ? 'Review · ' : '') + esc(link ? link[1].name : t.notion) + '</div>';
+    if (link || t.notion) h += '<div class="cfn">' + (t.role === 'reviewer' ? 'Review · ' : '') + esc((link ? link[1].name : t.notion).replace(/^GEN-/, '')) + '</div>';
     var tt = todays(t);
     if (tt.length)
       h += '<div class="m">' + (run ? '<i class="pulse"></i>' : '') + fmtMin(spent(tt)) + ' · ' +
@@ -696,7 +696,7 @@
     projs.sort().forEach(function (p) { h += '<option value="' + esc(p) + '"' + (p === proj ? ' selected' : '') + '>' + esc(p) + '</option>'; });
     $('an-proj').innerHTML = h; h = '<option value="">' + (proj ? '— Pick a ticket —' : '') + '</option>';
     free.filter(function (n) { return n.project === proj; }).sort(function (a, b) { return a.label.localeCompare(b.label); }).forEach(function (n) {
-      h += '<option value="' + esc(n.gen) + '">' + esc(n.gen + ':' + n.label + ' · ' + n.status + (n.role === 'reviewer' ? ' · Review' : '')) + '</option>';
+      h += '<option value="' + esc(n.gen) + '">' + esc(n.gen.replace(/^GEN-/, '') + ':' + n.label + ' · ' + n.status + (n.role === 'reviewer' ? ' · Review' : '')) + '</option>';
     });
     $('an-task').innerHTML = h; $('an-task').disabled = !proj;
   }

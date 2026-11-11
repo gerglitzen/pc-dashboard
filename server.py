@@ -341,7 +341,7 @@ def clockify_links():
 
 def add_tickets(found, links):
     """Add Notion tickets that aren't on the board yet: In progress ones I'm assigned to into In progress, the rest
-    into Backlog; titled by their Clockify task. Returns the ones whose Clockify task isn't there yet (not added)."""
+    into Backlog; titled by their Notion Task Name (the card shows the full Clockify name under it). Returns the ones whose Clockify task isn't there yet (not added)."""
     left, added = [], False
     with tasks_lock:
         tasks = read_tasks()
@@ -352,8 +352,8 @@ def add_tickets(found, links):
             if clockify.enabled() and n["gen"] not in links:
                 left.append(n)
                 continue
-            link, name = links.get(n["gen"], ("", ""))
-            tasks.append({"title": name or n["title"], "prio": n["prio"] if n["prio"] in PRIOS else "Medium",
+            link = links.get(n["gen"], ("", ""))[0]
+            tasks.append({"title": n["title"], "prio": n["prio"] if n["prio"] in PRIOS else "Medium",
                           "status": "progress" if n["role"] == "assignee" and n["status"] == "In progress" else "backlog",
                           "clockify": link, "notion": n["gen"], "role": n["role"], "times": []})
             added = True

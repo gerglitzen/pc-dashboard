@@ -40,7 +40,12 @@ Logged ranges stay in sync:
 
 Your tickets in the Notion Tasks database come to the board by themselves, and moving them on the board updates their Notion status. A board ticket knows its Notion ticket by the Task ID at the start of its Clockify task's name, e.g. `GEN-4544:MLOps Feature - Meeting 2026-11-10` → Notion `GEN-4544`. Tickets you linked to such a Clockify task by hand are Notion tickets too.
 
-Notion tickets are titled with their Clockify task name (without the Task ID). The card shows the project after the title, without its code (`2579_OE_AI_IP` → `(OE_AI_IP)`), and the Clockify task below, with **Review ·** in front when you are the reviewer.
+Imported tickets are titled with their Notion *Task Name*. The card shows the project after the title, without its code (`2579_OE_AI_IP` → `(OE_AI_IP)`), and the full Clockify task name below without the `GEN-` prefix (`4544:MLOps Feature - Meeting 2026-11-10`), with **Review ·** in front when you are the reviewer:
+
+```
+Deploy to OE Azure (OE_AI_IP)
+4502:Common Development - Deploy to OE Azure
+```
 
 ### Getting tickets: daily sync and the ⟳ Notion button
 
@@ -63,7 +68,7 @@ A ticket is only added together with its Clockify task. If it is missing, the bo
 For tickets the daily sync doesn't bring (e.g. no due date yet): type a name in *+ Add a task*, press Enter, then pick the **project** and the **ticket** in the two lists under the priority buttons.
 
 - The name you typed is the ticket's title, so it is also the description of its Clockify time entries.
-- The list shows your tickets that aren't on the board yet: assigned to you and *Backlog*, *Not started*, *In progress* or *In review*; and *In review* where you are the reviewer. They are named like their Clockify task (`GEN-4544:<milestone> - <task>`), with their Notion status.
+- The list shows your tickets that aren't on the board yet: assigned to you and *Backlog*, *Not started*, *In progress* or *In review*; and *In review* where you are the reviewer. They are named like their Clockify task (`4544:<milestone> - <task>`), with their Notion status.
 - The ticket gets its priority from Notion (Medium if not set) and goes to **In progress** if it is assigned to you and In progress in Notion, otherwise to **Backlog**.
 - A *Backlog* ticket assigned to you is set to **Not started** in Notion, and the board ticket is linked to its Clockify task once that appears (within a minute; otherwise at the next sync). Until then the card shows the Task ID.
 - The list is loaded by the daily sync (or when the server starts) and reloaded by **⟳ Notion**, so a ticket created in Notion during the day shows up after a Sync.
