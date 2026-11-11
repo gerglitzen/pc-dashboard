@@ -26,8 +26,10 @@ Requirements: Linux with [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://a
 
    | Variable | What | Without it |
    |---|---|---|
-   | `CLOCKIFY_API_KEY`, `CLOCKIFY_USER_ID` | Clockify → Profile settings → API; your user id is the `id` of `GET https://api.clockify.me/api/v1/user` | no Clockify section, no time entries |
-   | `NOTION_API_KEY`, `NOTION_USER_ID` | a Notion integration token with access to the Tasks database; your Notion user id | no Notion sync |
+   | `CLOCKIFY_API_KEY`, `CLOCKIFY_USER_ID` | Clockify → Profile settings → API → Generate; your user id: `curl -s -H "X-Api-Key: <key>" https://api.clockify.me/api/v1/user` → `id` | no Clockify section, no time entries |
+   | `NOTION_API_KEY`, `NOTION_USER_ID` | a Notion internal integration token (notion.so/my-integrations); your Notion user id | no Notion sync |
+
+   For Notion, connect the integration to the **Tasks** and **Projects** databases (database ⋯ → Connections), and to the GitHub Pull Requests database if you want PR links. The app uses these Tasks properties: Task Name, Task ID, Status, Assignee, Reviewer, Due, Priority, Project, Parent-task, is_weekly, GitHub Pull Requests; and Project Name, Owner, Status of Projects. Find your user id with `curl -s -H "Authorization: Bearer <token>" -H "Notion-Version: 2025-09-03" https://api.notion.com/v1/users` (your entry's `id`).
 
    `config.yaml` sets how long archived Done tasks are kept (`archive_retention_days`, default 30).
 

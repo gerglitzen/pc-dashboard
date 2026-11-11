@@ -1,10 +1,38 @@
 # Architecture
 
+## In one minute
+
+The PC runs one Python server; an iPad opens its page on the LAN. The **System** page streams the PC's stats. The **Tasks** page is a board stored in `tasks.json` that mirrors work to two services:
+
+1. A ticket is created in **Notion** (by hand, or by *+ Create* on the board).
+2. An **external pipeline** (not in this repo) creates a **Clockify** task for it named `GEN-<n>:<parent> - <task>`, once the ticket leaves Backlog.
+3. The ticket comes to the board: the daily sync / ⟳ Notion (due today or earlier), or *+ Add*. The `GEN-<n>` prefix links board ticket ↔ Clockify task ↔ Notion ticket.
+4. You run its timer; each finished time range becomes a Clockify **time entry**.
+5. Moving the ticket on the board sets its Notion **status** (In progress; on Done you are asked: Done / In review / leave).
+6. The next day its Done ticket is archived to `archive/YYYY-MM-DD.jsonl`.
+
+**Security:** the server listens on all interfaces (`0.0.0.0:8765`) with **no login**; anyone on the LAN can change the board, Clockify entries and Notion statuses. Keep it on a trusted home network; never expose it to the internet.
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| ticket | an item on the board (a `tasks` entry in `tasks.json`) |
+| Notion ticket / Task ID | a row of the Notion **Tasks** database (General-Task), identified by its Task ID `GEN-<n>` (the `notion` field of a ticket) |
+| Notion project | a row of the Notion **Projects** database (General-Projects); its *Owner* is the only one who creates tickets in it |
+| Clockify task | the Clockify task of a Notion ticket, named `GEN-<n>:…` (the `clockify` field: `projectId/taskId`) |
+| time entry | a logged time range in Clockify |
+| role | my role on a Notion ticket: `assignee` or `reviewer` |
+| weekly ticket | Notion checkbox `is_weekly`: a recurring ticket that stays In progress; its status is never changed |
+| personal ticket | a ticket with no `notion` and no `clockify`: tracked on the board only |
+| pick list (`picks`) | cached list of my Notion tickets for *+ Add*; `projects` is the cached project trees for *+ Create* |
+| data source | Notion API name for a database's table (`notion.TASKS`, `notion.PROJECTS`) |
+
 ## Stack
 
 - **Server:** one Python process (`server.py`), standard library `http.server` (`ThreadingHTTPServer`), plus `psutil` (system stats) and `pyyaml` (`config.yaml`). Dependencies are managed by uv (`pyproject.toml`, `uv.lock`).
 - **API clients:** `clockify.py` and `notion.py`, plain `urllib` REST clients (no SDKs). They read their keys from the environment (`.env` is loaded by `server.py` at start; real environment variables win).
-- **Frontend:** a single `index.html` with inline CSS and vanilla JavaScript (no build step, no libraries), written for iPad Safari.
+- **Frontend:** a single `index.html` with inline CSS and vanilla JavaScript (no build step, no libraries), written for iPad Safari. The System page reads `/stream` (only while shown). The board keeps the whole task list in memory and saves it whole with `PUT /tasks` on every change; it polls `GET /tasks` every 10 s; a **409** reply means the file changed elsewhere, so it reloads. Notion actions go to `/notion/*`.
 - **Storage:** JSON / JSONL files next to the server. No database.
 
 ```
@@ -21,7 +49,7 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | `server.py` | HTTP server, stats sampler, task storage, archive, Clockify logging, Notion sync |
 | `clockify.py` | Clockify: my open tasks per project (cached; `refresh=True` reloads), create / update / delete time entries |
 | `notion.py` | Notion: my tickets for the board (`my_tasks`), my tickets to add by hand with project and milestone names (`pickable`), my projects and their ticket trees (`my_projects`), `create_task`, one ticket by Task ID (`get_task`), `set_status`, PR links (`pr_urls`) |
-| `index.html` | both pages, the board, drag & drop, the ticket sheet, the Done dialog |
+| `index.html` | both pages, the board, drag & drop, the ticket sheet, the + Add / + Create dialog, the Done dialog |
 | `config.yaml` | `archive_retention_days` |
 | `.env` | API keys (not committed; `.env.sample` is the template) |
 | `tasks.json` | the board (not committed; `TASKS_FILE` overrides the path) |
@@ -32,9 +60,9 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | Thread | Does |
 |---|---|
 | `sampler` | every second: reads system stats into `latest` and wakes the `/stream` clients |
-| `archiver` | every minute: retries failed Clockify logging, archives yesterday's Done tickets, starts the daily Notion sync when `notion_day` isn't today, prunes old archive files |
+| `archiver` | every minute: retries failed Clockify logging, archives the Done tickets when the task file was last written before today (into that day's archive file), starts the daily Notion sync when `notion_day` isn't today, prunes old archive files |
 | request threads | one per HTTP request |
-| link waiter | after adding a Notion ticket by hand without its Clockify task: polls Clockify (10 s × 6) and links it |
+| link waiter | after adding (+ Add) or creating (+ Create) a Notion ticket without its Clockify task yet: polls Clockify (10 s × 6) and links it |
 | sync waiter | after a Notion sync: reloads the pick list (`load_picks`), then polls Clockify for tickets still missing their Clockify task (10 s × 6), then releases `sync_lock` |
 
 `tasks_lock` serialises every read-modify-write of `tasks.json`. `sync_lock` allows one Notion sync at a time (the daily one and the button); it is held until the waiter is done.
@@ -55,6 +83,8 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | `POST /notion/sync` | | `{added, waiting: [GEN ids]}`; **409** while a sync runs |
 | `POST /notion/move` | `{notion, to: backlog\|progress\|done}` | `{role, status, changed, suggest}` |
 | `POST /notion/status` | `{notion, status: Done\|In review}` | `{status, changed}` |
+
+Errors: `/notion/*` replies **400** `{error}` when Notion isn't set up or the request is invalid, **502** `{error}` when Notion or Clockify fails (`GET /notion/tickets` also when the pick list can't be loaded). `GET /tasks` carries the last background errors for the board to show: `clockify_error` (time entry logging, retried every minute) and `notion_error` (sync, waiting for a Clockify task).
 
 `version` is the task file's modification time in ns: every write by anyone (the board, the archive, the Notion sync) changes it, so a client that saves on an old version gets 409 and reloads. Writes that only add Clockify entry ids (`retry_logging`) keep the old mtime and are merged back by `merge_ids` instead.
 
@@ -80,11 +110,11 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 
 ## Clockify logging
 
-On `PUT /tasks` the server compares the new list with the saved one: removed logged ranges delete their entry, changed ones (time, date, title, link) update it (`sync_changes`); if that fails, nothing is saved (502). Then the file is written, and finished, unlogged ranges of linked tickets are logged (`log_pending`). Failed logging is retried every minute by the archiver.
+On `PUT /tasks` the server compares the new list with the saved one: removed logged ranges delete their entry, changed ones (time, date, title, link) update it (`sync_changes`); if that fails, nothing is saved (502). Then the file is written, and finished (end time set, not 0 minutes), unlogged ranges of tickets with a `clockify` link are logged (`log_pending`); personal tickets never are. Failed logging is retried every minute by the archiver.
 
 ## Notion sync
 
-**Linking.** Our Clockify tasks are created from Notion by a separate pipeline and named `<Task ID>:<milestone> - <task>`. `GEN_RE` reads the Task ID from the name; that is the only link between a board ticket, its Clockify task and its Notion ticket. The pipeline creates the Clockify task when the Notion ticket leaves Backlog (for the assignee), adds the reviewer when it is In review, and closes it when it is Done.
+**Linking.** Our Clockify tasks are created from Notion by a separate pipeline (outside this repo; this app depends on its contract: the name format below, a task created for the assignee when the ticket leaves Backlog, the reviewer added at In review, closed at Done) and named `<Task ID>:<milestone> - <task>`. `GEN_RE` reads the Task ID from the name; that is the only link between a board ticket, its Clockify task and its Notion ticket. The pipeline creates the Clockify task when the Notion ticket leaves Backlog (for the assignee), adds the reviewer when it is In review, and closes it when it is Done.
 
 **Daily import / Sync button** (`run_sync` → `notion_sync`, then `wait_for_clockify`):
 

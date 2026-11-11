@@ -24,6 +24,8 @@ import server, notion, clockify
 notion.my_tasks = lambda day: [{"id": "p1", "gen": "GEN-1", "title": "x", "status": "Backlog", "prio": "High",
                                 "role": "assignee", "reviewed": False, "weekly": False}]
 notion.set_status = lambda page_id, status: print("set", page_id, status)
+notion.pickable = lambda: []          # run_sync reloads the pick lists in a thread
+notion.my_projects = lambda: []
 clockify.enabled = lambda: False
 server.sync_lock.acquire()
 print(server.run_sync())
@@ -45,7 +47,22 @@ Then try it on the iPad (or a narrow browser window): drag & drop, the ticket sh
 - Keep it small: standard library on the server, no frontend libraries or build step.
 - The browser sends the whole task list on every change (`PUT /tasks`); the server is the one that talks to Clockify and Notion.
 - Every write to `tasks.json` goes through `write_tasks` under `tasks_lock` (temp file + `os.replace`).
-- Notion property names and status names are used as they are in the Tasks database (`Status`, `Assignee`, `Reviewer`, `Due`, `Priority`, `Task ID`, `is_weekly`). If the database changes, update `notion.py`.
+- Notion property and status names are used exactly as in the databases; if they change, update `notion.py`:
+
+  | Database | Property | Type | Used for |
+  |---|---|---|---|
+  | Tasks (General-Task) | Task Name | title | ticket title |
+  | | Task ID | unique id | `GEN-<n>`, the link to Clockify |
+  | | Status | status | import rules, status changes |
+  | | Assignee, Reviewer | people | my role, the sheet's names |
+  | | Due | date | daily import (due ≤ today), + Create |
+  | | Priority | select | board priority |
+  | | Project, Parent-task | relation | + Add labels, + Create tree |
+  | | is_weekly | checkbox | weekly tickets keep their status |
+  | | GitHub Pull Requests | relation | PR links in the sheet (`_external_object_url` of the PR page) |
+  | Projects (General-Projects) | Project Name | title | project names |
+  | | Owner | people | projects I can create tickets in |
+  | | Status | status | only *In progress* projects |
 - Update the [user guide](../userguide/USER_GUIDE.md) and [Architecture](ARCHITECTURE.md) with behaviour changes.
 
 ## The systemd service
