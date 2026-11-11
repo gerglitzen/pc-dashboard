@@ -18,7 +18,7 @@ A live system monitor for this PC that you open in a browser on another device o
 
 Requirements: Linux with [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`). Optional: `nvidia-smi` for GPU stats.
 
-1. **Configure** (optional — without it the board works on its own):
+1. **Configure** (optional — without it the board works on its own, with personal tickets only):
 
    ```bash
    cp .env.sample .env    # then fill in the values
@@ -29,7 +29,7 @@ Requirements: Linux with [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://a
    | `CLOCKIFY_API_KEY`, `CLOCKIFY_USER_ID` | Clockify → Profile settings → API → Generate; your user id: `curl -s -H "X-Api-Key: <key>" https://api.clockify.me/api/v1/user` → `id` | no Clockify section, no time entries |
    | `NOTION_API_KEY`, `NOTION_USER_ID` | a Notion internal integration token (notion.so/my-integrations); your Notion user id | no Notion sync |
 
-   For Notion, connect the integration to the **Tasks** and **Projects** databases (database ⋯ → Connections), and to the GitHub Pull Requests database if you want PR links. The app uses these Tasks properties: Task Name, Task ID, Status, Assignee, Reviewer, Due, Priority, Project, Parent-task, is_weekly, GitHub Pull Requests; and Project Name, Owner, Status of Projects. Find your user id with `curl -s -H "Authorization: Bearer <token>" -H "Notion-Version: 2025-09-03" https://api.notion.com/v1/users` (your entry's `id`).
+   For Notion, connect the integration to the **Tasks** and **Projects** databases (database ⋯ → Connections), and to the GitHub Pull Requests database if you want PR links. The app uses these Tasks properties: Task Name, Task ID, Status, Assignee, Reviewer, Due, Priority, Project, Parent-task, is_weekly, GitHub Pull Requests; and Project Name, Owner, Status of Projects. Status values used: Tasks — Backlog, Not started, In progress, In review, Blocked, Done, Archived; Projects — In progress. Find your user id with `curl -s -H "Authorization: Bearer <token>" -H "Notion-Version: 2025-09-03" https://api.notion.com/v1/users` (your entry's `id`).
 
    `config.yaml` sets how long archived Done tasks are kept (`archive_retention_days`, default 30).
 
@@ -40,6 +40,8 @@ Requirements: Linux with [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://a
    ```
 
    Open `http://<pc-ip>:8765` on the iPad (`hostname -I` shows the PC's IP). If it doesn't load: `sudo ufw allow 8765/tcp`.
+
+   **There is no login:** anyone on the network can see the page and change the board, Clockify entries and Notion statuses. Run it only on a trusted home network and never open the port to the internet.
 
 3. **Start automatically** (systemd user service; run from the project folder):
 

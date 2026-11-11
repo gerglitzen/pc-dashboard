@@ -15,6 +15,8 @@ A small task board with three columns: **Backlog** and **In progress** (both gro
 
 ### Time tracking
 
+A **time range** is one start–stop span: from starting to stopping the timer, or one *Add time* entry.
+
 - The ▶ button on In progress tickets starts / stops their timer. Only one timer runs at a time; starting one moves its ticket to In progress, moving a ticket out of In progress stops its timer.
 - Every time range belongs to the day it started; a timer running past midnight stays one range on the day it started. The board shows only **today's** ranges and time (plus a running timer), so a ticket still In progress from yesterday starts the day at 0.
 - The sheet shows today's ranges with today's and the total time. *Show all* lists every range grouped by day; older ranges can be edited or deleted too. *Add time* adds a range for today. Tap a range's times to edit it, *Confirm* saves it, *Del* deletes it.
@@ -23,14 +25,14 @@ A small task board with three columns: **Backlog** and **In progress** (both gro
 
 Within a minute after midnight (or when the server starts, if it was off), on the PC's clock:
 
-- Done tickets are moved to the archive (`archive/YYYY-MM-DD.jsonl`), so Done starts empty. Archive files older than 30 days are deleted (`config.yaml`: `archive_retention_days`).
+- Done tickets are moved to a local history file (`archive/YYYY-MM-DD.jsonl` on the PC — not Notion's *Archived* status), so Done starts empty. Archive files older than 30 days are deleted (`config.yaml`: `archive_retention_days`).
 - Your Notion tickets are brought in, see [Notion](#notion).
 
 If the board was changed on the PC (by the daily sync, for example) while you edit it on the iPad, your change is not saved: the board reloads and asks you to redo it.
 
 ## Clockify
 
-Link a ticket to a Clockify task in its sheet: pick the project and the task under **Clockify**. The list shows the open tasks of active projects that are assigned to you; it is reloaded each time you open a ticket.
+Link a ticket to a Clockify task in its sheet: pick the project and the task under **Clockify**. The task must already exist in Clockify (ours are created from Notion, see below); the list shows the tasks assigned to you that aren't done, in projects that aren't archived, and is reloaded each time you open a ticket.
 
 Every time range you finish on a linked ticket (stopping its timer or *Add time*) is logged to Clockify as a time entry on that range's date, with the ticket title as description. Logged ranges show *✓ Clockify*. If logging fails, the error is shown and the server retries every minute.
 
@@ -62,7 +64,11 @@ Deploy to OE Azure (OE_AI_IP)
 
 ### Getting tickets: daily sync and the ⟳ Notion button
 
-Once a day (the first minute after midnight the server runs, or when it starts), and whenever you tap **⟳ Notion** in the header, the board takes your Notion tickets that are **due today or earlier**. A ticket that is already on the board is not added again; tickets are never removed from the board (e.g. when their due date was moved).
+Once a day (the first minute after midnight the server runs, or when it starts), and whenever you tap **⟳ Notion** in the header, the board takes your Notion tickets that are **due today or earlier**. A ticket that is already on the board is not added again; the sync never removes tickets from the board (e.g. when their due date was moved).
+
+**Deleting** a Notion ticket's card (sheet → *Delete*) deletes its Clockify time entries but doesn't change Notion; if it still matches the table below, the next sync adds it again.
+
+**After it is on the board** a card follows Notion only in two ways: your role (assignee / reviewer) is kept up to date, and the *sent back* case below. Title, priority and due date changes in Notion don't reach the card; change them on the board too if needed.
 
 | My role | Notion status | On the board |
 |---|---|---|
@@ -84,7 +90,7 @@ For tickets the daily sync doesn't bring (e.g. no due date yet): tap **+ Add**, 
 - The list shows your tickets that aren't on the board yet: assigned to you and *Backlog*, *Not started*, *In progress* or *In review*; and *In review* where you are the reviewer. They are named like their Clockify task (`4544:<milestone> - <task>`), with their Notion status.
 - The ticket gets its priority from Notion (Medium if not set) and goes to **In progress** if it is assigned to you and In progress in Notion, otherwise to **Backlog**.
 - A *Backlog* ticket assigned to you is set to **Not started** in Notion, and the board ticket is linked to its Clockify task once that appears (within a minute; otherwise at the next sync). Until then the card shows the Task ID.
-- The list is loaded by the daily sync (or when the server starts) and reloaded by **⟳ Notion**, so a ticket created in Notion during the day shows up after a Sync.
+- The list is loaded by the daily sync (or when the server starts) and reloaded by **⟳ Notion**, so a ticket created in Notion during the day shows up after ⟳ Notion (or the next daily sync).
 
 ### Creating a Notion ticket (+ Create)
 

@@ -53,7 +53,7 @@ Then try it on the iPad (or a narrow browser window): drag & drop, the ticket sh
   |---|---|---|---|
   | Tasks (General-Task) | Task Name | title | ticket title |
   | | Task ID | unique id | `GEN-<n>`, the link to Clockify |
-  | | Status | status | import rules, status changes |
+  | | Status | status | import rules, status changes; values Backlog, Not started, In progress, In review, Blocked, Done, Archived ([meaning](ARCHITECTURE.md#notion-statuses)) |
   | | Assignee, Reviewer | people | my role, the sheet's names |
   | | Due | date | daily import (due ≤ today), + Create |
   | | Priority | select | board priority |
@@ -62,7 +62,7 @@ Then try it on the iPad (or a narrow browser window): drag & drop, the ticket sh
   | | GitHub Pull Requests | relation | PR links in the sheet (`_external_object_url` of the PR page) |
   | Projects (General-Projects) | Project Name | title | project names |
   | | Owner | people | projects I can create tickets in |
-  | | Status | status | only *In progress* projects |
+  | | Status | status | only *In progress* projects (value `In progress`) |
 - Update the [user guide](../userguide/USER_GUIDE.md) and [Architecture](ARCHITECTURE.md) with behaviour changes.
 
 ## The systemd service

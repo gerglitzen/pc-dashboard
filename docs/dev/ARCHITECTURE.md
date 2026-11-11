@@ -5,7 +5,7 @@
 The PC runs one Python server; an iPad opens its page on the LAN. The **System** page streams the PC's stats. The **Tasks** page is a board stored in `tasks.json` that mirrors work to two services:
 
 1. A ticket is created in **Notion** (by hand, or by *+ Create* on the board).
-2. An **external pipeline** (not in this repo) creates a **Clockify** task for it named `GEN-<n>:<parent> - <task>`, once the ticket leaves Backlog.
+2. An **external pipeline** (not in this repo) creates a **Clockify** task for it named `GEN-<n>:<milestone> - <task>`, once its Notion status is *Not started* (it left Backlog; the board sets this itself for Backlog tickets it imports, adds or creates).
 3. The ticket comes to the board: the daily sync / ⟳ Notion (due today or earlier), or *+ Add*. The `GEN-<n>` prefix links board ticket ↔ Clockify task ↔ Notion ticket.
 4. You run its timer; each finished time range becomes a Clockify **time entry**.
 5. Moving the ticket on the board sets its Notion **status** (In progress; on Done you are asked: Done / In review / leave).
@@ -23,10 +23,26 @@ The PC runs one Python server; an iPad opens its page on the LAN. The **System**
 | Clockify task | the Clockify task of a Notion ticket, named `GEN-<n>:…` (the `clockify` field: `projectId/taskId`) |
 | time entry | a logged time range in Clockify |
 | role | my role on a Notion ticket: `assignee` or `reviewer` |
-| weekly ticket | Notion checkbox `is_weekly`: a recurring ticket that stays In progress; its status is never changed |
+| milestone | a ticket's Parent-task (any level); the Clockify task name shows it before the ticket's own name |
+| weekly ticket | Notion checkbox `is_weekly`: a recurring ticket that stays In progress; board moves don't set it In progress and the Done dialog suggests *Leave as is* |
 | personal ticket | a ticket with no `notion` and no `clockify`: tracked on the board only |
 | pick list (`picks`) | cached list of my Notion tickets for *+ Add*; `projects` is the cached project trees for *+ Create* |
 | data source | Notion API name for a database's table (`notion.TASKS`, `notion.PROJECTS`) |
+
+## Notion statuses
+
+Notion *Backlog* is not the board's Backlog column.
+
+| Notion status | Meaning | On the board (import) |
+|---|---|---|
+| Backlog | not groomed, no Clockify task yet | assigned: set to Not started, added to Backlog once its Clockify task exists |
+| Not started | ready; the pipeline creates the Clockify task | Backlog |
+| In progress | the assignee works on it | assigned: In progress; reviewer: not imported (it is back with the assignee) |
+| In review | waiting for the reviewer | reviewer: Backlog; assigned: not imported |
+| Blocked | waiting on someone else | not imported |
+| Done, Archived | closed | not imported |
+
+The board changes Notion status only by the [board-move rules](#notion-sync) and the Done dialog.
 
 ## Stack
 
@@ -60,7 +76,7 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | Thread | Does |
 |---|---|
 | `sampler` | every second: reads system stats into `latest` and wakes the `/stream` clients |
-| `archiver` | every minute: retries failed Clockify logging, archives the Done tickets when the task file was last written before today (into that day's archive file), starts the daily Notion sync when `notion_day` isn't today, prunes old archive files |
+| `archiver` | every minute: loads the pick lists if they are missing, retries failed Clockify logging, archives the Done tickets when the task file was last written before today (into that day's archive file), starts the daily Notion sync when `notion_day` isn't today, prunes old archive files |
 | request threads | one per HTTP request |
 | link waiter | after adding (+ Add) or creating (+ Create) a Notion ticket without its Clockify task yet: polls Clockify (10 s × 6) and links it |
 | sync waiter | after a Notion sync: reloads the pick list (`load_picks`), then polls Clockify for tickets still missing their Clockify task (10 s × 6), then releases `sync_lock` |
