@@ -151,7 +151,8 @@
   .ghost { position: fixed; z-index: 20; margin: 0; pointer-events: none; opacity: .96; transition: none;
     transform: rotate(2deg) scale(1.04); box-shadow: 0 14px 32px rgba(0,0,0,.35); }
   #sheet { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 10; display: flex; align-items: flex-start; justify-content: center;
-    padding: 60px 16px 0; background: rgba(0,0,0,.45); opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s; }
+    padding: 60px 16px; background: rgba(0,0,0,.45); opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s;
+    overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; } /* a long ticket scrolls */
   #sheet.show { opacity: 1; visibility: visible; }
   #sheet .box { width: 540px; max-width: 100%; padding: 20px; border-radius: 16px; background: var(--surface-1);
     box-shadow: 0 24px 60px rgba(0,0,0,.4); transform: translateY(24px) scale(.97); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
