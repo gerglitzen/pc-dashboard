@@ -64,7 +64,7 @@ Deploy to OE Azure (OE_AI_IP)
 
 ### Getting tickets: daily sync and the ⟳ Notion button
 
-Once a day (the first minute after midnight the server runs, or when it starts), and whenever you tap **⟳ Notion** in the header, the board takes your Notion tickets that are **due today or earlier**. A ticket that is already on the board is not added again; the sync never removes tickets from the board (e.g. when their due date was moved).
+Once a day (the first minute after midnight the server runs, or when it starts), and whenever you tap **⟳ Notion** in the header, the board takes your Notion tickets that are **due today or earlier**, and your weekly tickets that are In progress and have today in *weekly_day* (they have no due date). A ticket that is already on the board is not added again; the sync never removes tickets from the board (e.g. when their due date was moved).
 
 **Deleting** a Notion ticket's card (sheet → *Delete*) deletes its Clockify time entries but doesn't change Notion; if it still matches the table below, the next sync adds it again.
 
@@ -77,10 +77,11 @@ Once a day (the first minute after midnight the server runs, or when it starts),
 | Assignee | In progress | **In progress** |
 | Assignee | Blocked, In review, Done, Archived | not added |
 | Reviewer | In review | **Backlog** |
+| Assignee, weekly, today in *weekly_day* | In progress | **In progress** (due date not needed) |
 
 A ticket is only added together with its Clockify task. If it is missing, the board checks Clockify every 10 seconds for a minute; if it still isn't there, an error names the ticket — tap ⟳ Notion later to try again.
 
-**Sent back by the reviewer:** a ticket you are assigned to that sits in Done on your board but is *In progress* in Notion again moves back to **In progress** at the next sync.
+**Sent back by the reviewer:** a ticket you are assigned to that sits in Done on your board but is *In progress* in Notion again moves back to **In progress** at the next sync (not weekly tickets: they are always In progress).
 
 ### Adding an existing Notion ticket (+ Add)
 
@@ -110,7 +111,7 @@ Tap **+ Create**, type a name, pick the priority, the **project** and **where** 
 | You move it to | Notion |
 |---|---|
 | In progress (drag, sheet or ▶ timer) | set to **In progress** if it was Backlog, Not started or Blocked. weekly tickets are not changed |
-| Done | you are asked; the suggestion is **In review** when the ticket has a reviewer, **Done** when it hasn't, **Leave as is** for weekly tickets |
+| Done | you are asked; the suggestion is **In review** when the ticket has a reviewer, **Done** when it hasn't. Weekly tickets: not asked, Notion stays In progress |
 | Backlog | not changed |
 
 #### Tickets you review

@@ -6,7 +6,7 @@ The PC runs one Python server; an iPad opens its page on the LAN. The **System**
 
 1. A ticket is created in **Notion** (by hand, or by *+ Create* on the board).
 2. An **external pipeline** (not in this repo) creates a **Clockify** task for it named `GEN-<n>:<milestone> - <task>`, once its Notion status is *Not started* (it left Backlog; the board sets this itself for Backlog tickets it imports, adds or creates).
-3. The ticket comes to the board: the daily sync / ⟳ Notion (due today or earlier), or *+ Add*. The `GEN-<n>` prefix links board ticket ↔ Clockify task ↔ Notion ticket.
+3. The ticket comes to the board: the daily sync / ⟳ Notion (due today or earlier; weekly tickets on their `weekly_day`), or *+ Add*. The `GEN-<n>` prefix links board ticket ↔ Clockify task ↔ Notion ticket.
 4. You run its timer; each finished time range becomes a Clockify **time entry**.
 5. Moving the ticket on the board sets its Notion **status** (In progress; on Done you are asked: Done / In review / leave; full rules in [Board moves](#notion-sync)).
 6. The next day its Done ticket is archived to `archive/YYYY-MM-DD.jsonl`.
@@ -24,7 +24,7 @@ The PC runs one Python server; an iPad opens its page on the LAN. The **System**
 | time entry | a logged time range in Clockify |
 | role | my role on a Notion ticket: `assignee` or `reviewer` |
 | milestone | a ticket's Parent-task (any level); the Clockify task name shows it before the ticket's own name |
-| weekly ticket | Notion checkbox `is_weekly`: a recurring ticket that stays In progress; board moves don't set it In progress and the Done dialog suggests *Leave as is* |
+| weekly ticket | Notion checkbox `is_weekly`: a recurring ticket that stays In progress, synced to the board on the days in multi-select `weekly_day` (Mon…Sun); board moves don't set it In progress and moving it to Done asks nothing |
 | personal ticket | a ticket with no `notion` and no `clockify`: tracked on the board only |
 | pick list (`picks`) | cached list of my Notion tickets for *+ Add*; `projects` is the cached project trees for *+ Create* |
 | data source | Notion API name for a database's table (`notion.TASKS`, `notion.PROJECTS`) |
@@ -97,7 +97,7 @@ iPad browser ──HTTP──▶ server.py ──▶ tasks.json, archive/*.jsonl
 | `GET /notion/people?GEN-<n>` | | `{assignees, reviewers, status, prs}` — names and GitHub PR URLs, for the ticket sheet |
 | `POST /notion/add` | `{title, notion}` | the task state; **409** if that Notion ticket is already on the board |
 | `POST /notion/sync` | | `{added, waiting: [GEN ids]}`; **409** while a sync runs |
-| `POST /notion/move` | `{notion, to: backlog\|progress\|done}` | `{role, status, changed, suggest}` |
+| `POST /notion/move` | `{notion, to: backlog\|progress\|done}` | `{role, status, changed, suggest, weekly}` |
 | `POST /notion/status` | `{notion, status: Done\|In review}` | `{status, changed}` |
 
 Errors: `/notion/*` replies **400** `{error}` when Notion isn't set up or the request is invalid, **502** `{error}` when Notion or Clockify fails (`GET /notion/tickets` also when the pick list can't be loaded). `GET /tasks` carries the last background errors for the board to show: `clockify_error` (time entry logging, retried every minute) and `notion_error` (sync, waiting for a Clockify task).
@@ -134,10 +134,10 @@ On `PUT /tasks` the server compares the new list with the saved one: removed log
 
 **Daily import / ⟳ Notion button** (`run_sync` → `notion_sync`, then `wait_for_clockify`):
 
-1. `notion.my_tasks(today)` — one query on the Tasks data source: due ≤ today and (assignee = me and status not Blocked / In review / Done / Archived) or (reviewer = me and status = In review).
+1. `notion.my_tasks(today)` — one query on the Tasks data source: due ≤ today and (assignee = me and status not Blocked / In review / Done / Archived) or (reviewer = me and status = In review); or (assignee = me and `is_weekly` and `weekly_day` contains today's Mon…Sun and status = In progress), any due.
 2. Load my Clockify tasks fresh and map Task ID → Clockify task.
 3. Board tickets that aren't in the result and don't know my role yet (e.g. no due date) get it from `get_task`, one call each.
-4. Under `tasks_lock`: board tickets linked to a `GEN-…` Clockify task get `notion`; tickets get `role`; an assigned ticket in Done that is In progress in Notion moves back to In progress. `notion_day` is written.
+4. Under `tasks_lock`: board tickets linked to a `GEN-…` Clockify task get `notion`; tickets get `role`; an assigned ticket in Done that is In progress in Notion moves back to In progress (not `is_weekly`). `notion_day` is written.
 5. New tickets (not on the board): assigned + Backlog → `set_status(Not started)`. Each is added (`add_tickets`) if its Clockify task exists, else it waits: Clockify is polled every 10 s, 6 times, then `notion_error` lists the ones still missing.
 
 **Adding by hand** (`POST /notion/add`). The pick list (`picks`, from `notion.pickable`: assigned and not Blocked / Done / Archived, or In review where I review, plus project and milestone names) is loaded by every sync and at start, so the picker opens without Notion calls. The added ticket keeps the typed title, gets the Notion priority, goes to In progress if assigned + In progress, else Backlog; assigned + Backlog → `set_status(Not started)`. Without its Clockify task yet, `link_when_ready` links it within a minute; any sync also links board tickets that have `notion` but no `clockify`.
@@ -154,4 +154,4 @@ On `PUT /tasks` the server compares the new list with the saved one: removed log
 | reviewer | backlog | In review → In progress |
 | any | done | nothing changes; `suggest` = reviewer: Done; assignee: `is_weekly` → "" (leave), has reviewer → In review, else Done; no role → "" |
 
-For Done the browser shows the dialog with `suggest` highlighted and sends the choice to `POST /notion/status`. The reply's `role` is stored on the ticket (the browser saves it), which is how hand-linked tickets learn their role.
+For Done the browser shows the dialog (closed again without a question when `weekly`) with `suggest` highlighted and sends the choice to `POST /notion/status`. The reply's `role` is stored on the ticket (the browser saves it), which is how hand-linked tickets learn their role.

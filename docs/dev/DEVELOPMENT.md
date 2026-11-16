@@ -59,6 +59,7 @@ Then try it on the iPad (or a narrow browser window): drag & drop, the ticket sh
   | | Priority | select | board priority |
   | | Project, Parent-task | relation | + Add labels, + Create tree |
   | | is_weekly | checkbox | weekly tickets keep their status |
+  | | weekly_day | multi_select (Mon…Sun) | days a weekly ticket is synced to the board |
   | | GitHub Pull Requests | relation | PR links in the sheet (`_external_object_url` of the PR page) |
   | Projects (General-Projects) | Project Name | title | project names |
   | | Owner | people | projects I can create tickets in |

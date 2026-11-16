@@ -554,7 +554,7 @@
       var o = tasks.filter(function (x) { return x.notion === gen; })[0];
       if (o && r.role && o.role !== r.role) { o.role = r.role; save(); } // my role learned from Notion
       if (r.changed) toast('Notion ' + gen + ' → ' + r.status);
-      if (to === 'done' && askGen === gen) askReady(r.suggest);
+      if (to === 'done' && askGen === gen) { if (r.weekly) closeAsk(); else askReady(r.suggest); } // weekly tickets stay In progress: no question
     });
   }
   function askButtons() { return $('ask-b').querySelectorAll('.btn'); }

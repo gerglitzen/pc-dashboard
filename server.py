@@ -366,7 +366,7 @@ def add_tickets(found, links):
 def notion_sync():
     """The daily import, also run by the Sync button. Takes my Notion tickets (notion.my_tasks); for the ones already on
     the board it only fills in my role, and moves a ticket I'm assigned to from Done back to In progress when it is
-    In progress in Notion again (the reviewer sent it back). Board tickets that aren't in that list (e.g. no due date)
+    In progress in Notion again (the reviewer sent it back; not weekly ones). Board tickets that aren't in that list (e.g. no due date)
     and don't know my role yet get it from their own Notion ticket. New ones assigned to me that are still Backlog in Notion are
     set to Not started there, so their Clockify task gets created. A new ticket is added once its Clockify task is
     there. Returns (number added, tickets still waiting for their Clockify task). Raises NotionError / ClockifyError."""
@@ -391,7 +391,7 @@ def notion_sync():
                 t["clockify"] = links[t["notion"]][0]
             n = by_gen.get(t["notion"])
             t["role"] = n["role"] if n else roles.get(t["notion"], t["role"])
-            if n and n["role"] == "assignee" and n["status"] == "In progress" and t["status"] == "done":
+            if n and n["role"] == "assignee" and n["status"] == "In progress" and not n["weekly"] and t["status"] == "done":
                 t["status"] = "progress"
                 back.append(t)
         tasks = [t for t in tasks if not any(t is b for b in back)] + back  # at the bottom of In progress
@@ -600,7 +600,7 @@ class Handler(BaseHTTPRequestHandler):
                 suggest = "" if to != "done" or not n["role"] else "Done" if n["role"] == "reviewer" else \
                     "" if n["weekly"] else "In review" if n["reviewed"] else "Done"
                 return self.send_json(200, {"role": n["role"], "status": status or n["status"], "changed": bool(status),
-                                            "suggest": suggest})
+                                            "suggest": suggest, "weekly": n["weekly"]})
             if self.path == "/notion/add" and str(body.get("title") or "").strip():
                 n = notion.get_task(gen)
                 if any(t["notion"] == gen for t in read_tasks()):

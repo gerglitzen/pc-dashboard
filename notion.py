@@ -6,6 +6,7 @@ import os
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 
 BASE = "https://api.notion.com/v1"
 TASKS = "7c3bce6e-e4e2-46aa-92f7-c0ca33139f7e"  # data source of the General-Task database
@@ -71,10 +72,15 @@ def _task(page):
 
 def my_tasks(day):
     """Tickets for the board, due on or before day (YYYY-MM-DD): assigned to me and Backlog / Not started / In progress,
-    or In review where I am the reviewer."""
+    or In review where I am the reviewer; plus my In progress is_weekly tickets whose weekly_day includes day's weekday."""
     me = os.environ["NOTION_USER_ID"]
     due = {"property": "Due", "date": {"on_or_before": day}}
+    weekday = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")[date.fromisoformat(day).weekday()]
     return [_task(p) for p in _query({"or": [
+        {"and": [{"property": "Assignee", "people": {"contains": me}},
+                 {"property": "is_weekly", "checkbox": {"equals": True}},
+                 {"property": "weekly_day", "multi_select": {"contains": weekday}},
+                 {"property": "Status", "status": {"equals": "In progress"}}]},
         {"and": [{"property": "Assignee", "people": {"contains": me}}, due] +
                 [{"property": "Status", "status": {"does_not_equal": s}} for s in ("Blocked", "In review", "Done", "Archived")]},
         {"and": [{"property": "Reviewer", "people": {"contains": me}}, due,
